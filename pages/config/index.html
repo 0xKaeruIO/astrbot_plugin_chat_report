@@ -306,7 +306,17 @@
     recent_times: "最近消息时间",
     report_id: "举报 ID",
     handler: "处理人",
-    group_rules: "本群群规"
+    group_rules: "本群群规",
+    context_log: "上下文聊天记录（多行）",
+    context_count: "上下文条数",
+    participants: "参与人员",
+    occur_time: "被举报消息发生时间",
+    context_conclusion: "AI 上下文结论",
+    cause: "事情起因（模板里放在末尾）",
+    malicious_hint: "疑似第三方恶意举报提示（正常举报时为空）",
+    action_plan: "后续动作（撤回禁言 / 仅留证）",
+    review_scope: "自动审查范围（条数 / 时间）",
+    violation_count: "违规条数"
   };
 
   /* ================= 普通分区字段 ================= */
@@ -327,10 +337,28 @@
             unit: "次" }
         ]
       }, {
+        title: "上下文与玩笑豁免", desc: "把被举报消息前后的群聊记录一起交给 AI，避免熟人玩笑被误判",
+        fields: [
+          { key: "context_enabled", label: "结合上下文研判", type: "bool",
+            hint: "开启后会把被举报消息前后的整段群聊记录（含其他成员）一起交给 AI，避免把熟人玩笑误判为辱骂" },
+          { key: "context_before_count", label: "上下文回溯条数", type: "number", min: 0, max: 60, step: 1,
+            unit: "条", hint: "被举报消息之前纳入的群聊记录条数" },
+          { key: "context_after_count", label: "被举报消息之后的条数", type: "number", min: 0, max: 30, step: 1,
+            unit: "条", hint: "被举报消息之后纳入的群聊记录条数" },
+          { key: "context_fetch_history", label: "缓存不足时拉取群历史", type: "bool",
+            hint: "本地缓存条数不够时调用 get_group_msg_history 补齐，需要机器人有相应权限，失败自动退回本地缓存" },
+          { key: "context_max_chars", label: "上下文文本上限", type: "number", min: 500, max: 12000, step: 100,
+            unit: "字符", hint: "上下文聊天记录超过该字符数时从最早的记录开始裁剪" },
+          { key: "banter_guard", label: "玩笑/互喷豁免", type: "bool",
+            hint: "AI 判定为双方玩笑互动时，即使消息含辱骂词也不处罚（AI 判定严重程度为 high 时仍照常处理）" }
+        ]
+      }, {
         title: "研判提示词", desc: "告诉 AI 判断标准，务必保留输出 JSON 的要求",
         fields: [
-          { key: "ai_system_prompt", label: "系统提示词", type: "textarea", rows: 11, vars: ["group_rules"],
-            hint: "必须保留要求 AI 输出 JSON（decision / confidence / reason / target_message_id）的说明" }
+          { key: "ai_system_prompt", label: "举报研判提示词", type: "textarea", rows: 11, vars: ["group_rules"],
+            hint: "必须保留要求 AI 输出 JSON（decision / confidence / reason / target_message_id / banter / severity / reporter_involved / participants / cause / context_summary）的说明" },
+          { key: "auto_review_system_prompt", label: "自动审查提示词", type: "textarea", rows: 11, vars: ["group_rules"],
+            hint: "必须保留输出 findings JSON（message_id / severity / confidence / reason / banter / summary / context_conclusion）的说明" }
         ]
       }]
     },
@@ -346,6 +374,43 @@
             hint: "转人工时，除 bot 管理员外还会私聊通知这些 QQ。每行一个" },
           { key: "auto_include_group_admins", label: "自动把本群管理员纳入通知对象", type: "bool",
             hint: "通过群成员列表自动识别群主/管理员并一同私聊通知" }
+        ]
+      }, {
+        title: "证据留存与指定管理员", desc: "撤回/禁言前先把违规发言与上下文私聊转发并落盘；机器人不是管理员时只留证转发",
+        fields: [
+          { key: "evidence_admin_ids", label: "指定管理员 / 群主 QQ", type: "list", rows: 4,
+            hint: "证据私聊转发的指定收件人：撤回/禁言前先把违规发言与上下文发到这里；机器人不是本群管理员时也会发给这里和群主。留空时依次回退到「默认指定用户 QQ」→ bot 管理员。每行一个" },
+          { key: "not_admin_evidence_only", label: "机器人不是群管理员时只留证转发", type: "bool",
+            hint: "开启后（默认）：机器人没有群管理权限时不尝试撤回/禁言，只把证据私聊转发给「指定管理员 / 群主」并登记待处理，由管理员手动处理" },
+          { key: "evidence_required", label: "证据未送达则不处罚", type: "bool",
+            hint: "开启时，证据私聊全部失败则跳过撤回/禁言并转人工；关闭后证据失败仍会照常处理（不推荐）" },
+          { key: "evidence_use_forward", label: "优先合并转发证据", type: "bool",
+            hint: "优先用私聊合并转发（send_private_forward_msg）发送证据，失败自动退化为普通私聊文本" },
+          { key: "evidence_keep_files", label: "本地留存证据文件", type: "bool",
+            hint: "在插件数据目录 evidence/ 下保存每次处理前的证据 JSON（含完整上下文）" }
+        ]
+      }, {
+        title: "自动审查", desc: "达到消息条数或时间间隔后，自动审查本群最近聊天记录",
+        fields: [
+          { key: "auto_review_enabled", label: "启用自动审查", type: "bool",
+            hint: "建议只在「分群覆盖」里给需要巡查的群开启；达到下方条数或时间条件时自动审查" },
+          { key: "auto_review_message_threshold", label: "触发条数", type: "number", min: 0, max: 500, step: 10, unit: "条",
+            hint: "累计多少条新消息触发一次审查；0 表示不按条数触发" },
+          { key: "auto_review_interval_minutes", label: "触发间隔", type: "number", min: 0, max: 1440, step: 5, unit: "分钟",
+            hint: "距上次审查超过该分钟数且有新消息时触发；0 表示不按时间触发" },
+          { key: "auto_review_scope_count", label: "上下文条数", type: "number", min: 5, max: 200, step: 5, unit: "条",
+            hint: "每次审查读取最近多少条消息作为上下文" },
+          { key: "auto_review_scope_minutes", label: "时间范围", type: "number", min: 0, max: 1440, step: 5, unit: "分钟",
+            hint: "只读取最近多少分钟内的消息；0 表示不限" },
+          { key: "auto_review_notify_mode", label: "通知模式", type: "select",
+            options: [
+              { value: "always", label: "无论是否安全都通知" },
+              { value: "safe_silent", label: "安全则不通知" },
+              { value: "after_action", label: "仅处理后保留证据并通知" }
+            ],
+            hint: "模式 3 只在真正执行处理（或仅留证转发）后通知" },
+          { key: "auto_review_max_actions", label: "单轮最多处理条数", type: "number", min: 0, max: 10, step: 1, unit: "条",
+            hint: "0 表示只通知不自动处理" }
         ]
       }, {
         title: "处理与限流", desc: "自动处理力度与举报频率限制",
@@ -375,7 +440,13 @@
           { key: "broadcast_result_in_group", label: "在群内播报处理结果", type: "bool",
             hint: "使用「群内处理结果播报模板」" },
           { key: "enable_target_report_count", label: "统计被举报人累计被举报次数", type: "bool",
-            hint: "按「群 + 被举报人」累计，供模板变量 {target_report_count} 使用" }
+            hint: "按「群 + 被举报人」累计，供模板变量 {target_report_count} 使用" },
+          { key: "notify_include_context", label: "通知中附带上下文聊天记录", type: "bool",
+            hint: "转人工/安全/证据通知会自动附带发生时间、参与人员、上下文聊天记录与事情起因；模板里已含 {context_log} 时不会重复追加" },
+          { key: "forward_context_records", label: "上下文用 QQ 合并转发送达", type: "bool",
+            hint: "开启后（默认）：通知与证据打包成 QQ「聊天记录」合并转发（1 条摘要 + 每条上下文消息各 1 条），管理员可展开查看原始对话；关闭后改为纯文本附带聊天记录" },
+          { key: "notify_admin_on_suspected_malicious", label: "疑似第三方恶意举报时提示管理员", type: "bool",
+            hint: "举报人未参与该段对话、且上下文判定为玩笑互动时，私聊提示管理员（用「疑似恶意举报模板」），不处罚被举报人" }
         ]
       }, {
         title: "举报权限", desc: "谁可以举报、谁可以确认处理",
@@ -414,14 +485,23 @@
       }, {
         title: "私聊通知", desc: "私聊发送给管理员 / 指定用户的文案",
         fields: [
-          { key: "safe_notify_template", label: "安全通知模板", type: "textarea", rows: 7,
-            vars: ["group_name", "group_id", "target", "message", "reporter", "target_report_count", "ai_judgement", "ai_confidence"],
+          { key: "safe_notify_template", label: "安全通知模板", type: "textarea", rows: 14,
+            vars: ["group_name", "group_id", "occur_time", "participants", "target", "reporter", "malicious_hint", "message", "context_conclusion", "ai_judgement", "ai_confidence", "context_count", "context_log", "report_id", "cause"],
             hint: "AI 判断安全且开关打开时发送" },
-          { key: "manual_notify_template", label: "转人工通知（引用举报 · 含内容）", type: "textarea", rows: 8,
-            vars: ["group_name", "group_id", "target", "message", "reporter", "target_report_count", "ai_judgement", "ai_confidence", "report_id"] },
-          { key: "manual_notify_template_nocontent", label: "转人工通知（无引用 · 不含内容）", type: "textarea", rows: 9,
-            vars: ["group_name", "group_id", "target", "recent_count", "recent_times", "reporter", "target_report_count", "ai_judgement", "ai_confidence", "report_id"],
-            hint: "为防止机器人被封号，不能包含具体消息内容，只能给出最近消息时间" },
+          { key: "manual_notify_template", label: "转人工通知（引用举报 · 含内容）", type: "textarea", rows: 16,
+            vars: ["group_name", "group_id", "occur_time", "participants", "target", "reporter", "malicious_hint", "message", "message_id", "target_report_count", "context_conclusion", "ai_judgement", "ai_confidence", "context_count", "context_log", "report_id", "cause"] },
+          { key: "manual_notify_template_nocontent", label: "转人工通知（无引用 @ 举报）", type: "textarea", rows: 16,
+            vars: ["group_name", "group_id", "occur_time", "participants", "target", "reporter", "malicious_hint", "recent_count", "recent_times", "target_report_count", "context_conclusion", "ai_judgement", "ai_confidence", "context_count", "context_log", "report_id", "cause"],
+            hint: "无引用 @ 举报转人工时使用；上下文记录同样会附带，如担心封号可在行为开关里关闭「通知中附带上下文聊天记录」" },
+          { key: "evidence_template", label: "证据转发模板", type: "textarea", rows: 16,
+            vars: ["report_id", "group_name", "group_id", "occur_time", "participants", "target", "reporter", "message", "message_id", "ai_judgement", "ai_confidence", "context_conclusion", "context_count", "context_log", "action_plan", "cause"],
+            hint: "撤回/禁言前私聊发给指定管理员的证据文案，含完整上下文；机器人不是管理员时同一条模板用于仅留证转发，后续动作由 {action_plan} 说明" },
+          { key: "malicious_notify_template", label: "疑似恶意举报模板", type: "textarea", rows: 12,
+            vars: ["group_name", "group_id", "occur_time", "participants", "target", "reporter", "context_conclusion", "ai_confidence", "context_count", "context_log", "report_id", "cause"],
+            hint: "举报人未参与对话且属玩笑互动时，用它私聊提示管理员" },
+          { key: "auto_review_notify_template", label: "自动审查通知模板", type: "textarea", rows: 12,
+            vars: ["group_name", "group_id", "review_scope", "occur_time", "participants", "violation_count", "context_conclusion", "action_plan", "context_count", "context_log", "cause"],
+            hint: "自动审查结果通知，模式 1/2/3 共用" },
           { key: "resolved_notify_template", label: "处理完成通知模板", type: "textarea", rows: 5,
             vars: ["report_id", "group_name", "group_id", "handler"] }
         ]
@@ -442,7 +522,28 @@
     { key: "auto_include_group_admins", label: "纳入群管理员", type: "bool" },
     { key: "reply_content", label: "处理回复内容", type: "text" },
     { key: "warn_template", label: "警告模板", type: "textarea", rows: 3 },
-    { key: "safe_group_template", label: "群内安全提示模板", type: "textarea", rows: 3 }
+    { key: "safe_group_template", label: "群内安全提示模板", type: "textarea", rows: 3 },
+    { key: "context_enabled", label: "结合上下文研判", type: "bool" },
+    { key: "context_before_count", label: "上下文回溯条数", type: "number", min: 0, max: 60, step: 1, unit: "条" },
+    { key: "context_after_count", label: "之后条数", type: "number", min: 0, max: 30, step: 1, unit: "条" },
+    { key: "banter_guard", label: "玩笑豁免", type: "bool" },
+    { key: "evidence_admin_ids", label: "指定管理员 / 群主 QQ", type: "list", rows: 3 },
+    { key: "evidence_required", label: "证据未送达不处罚", type: "bool" },
+    { key: "not_admin_evidence_only", label: "非管理员只留证", type: "bool" },
+    { key: "notify_include_context", label: "通知附上下文", type: "bool" },
+    { key: "forward_context_records", label: "上下文合并转发", type: "bool" },
+    { key: "notify_admin_on_suspected_malicious", label: "疑似恶意举报提示", type: "bool" },
+    { key: "auto_review_enabled", label: "启用自动审查", type: "bool" },
+    { key: "auto_review_message_threshold", label: "审查触发条数", type: "number", min: 0, max: 500, step: 10, unit: "条" },
+    { key: "auto_review_interval_minutes", label: "审查触发间隔", type: "number", min: 0, max: 1440, step: 5, unit: "分钟" },
+    { key: "auto_review_scope_count", label: "审查上下文条数", type: "number", min: 5, max: 200, step: 5, unit: "条" },
+    { key: "auto_review_scope_minutes", label: "审查时间范围", type: "number", min: 0, max: 1440, step: 5, unit: "分钟" },
+    { key: "auto_review_notify_mode", label: "审查通知模式", type: "select", options: [
+      { value: "always", label: "无论是否安全都通知" },
+      { value: "safe_silent", label: "安全则不通知" },
+      { value: "after_action", label: "仅处理后保留证据并通知" }
+    ] },
+    { key: "auto_review_max_actions", label: "单轮最多处理", type: "number", min: 0, max: 10, step: 1, unit: "条" }
   ];
 
   /* ================= 工具 ================= */
@@ -489,6 +590,12 @@
     var v = value == null ? "" : String(value);
     if (f.type === "provider") {
       return '<select id="' + id + '"><option value="">（使用当前会话默认提供商）</option></select>';
+    }
+    if (f.type === "select") {
+      var opts = (f.options || []).map(function (o) {
+        return '<option value="' + esc(o.value) + '">' + esc(o.label) + "</option>";
+      }).join("");
+      return '<select id="' + id + '">' + opts + "</select>";
     }
     if (f.type === "number") {
       return '<div class="unit"><input type="number" id="' + id + '" value="' + esc(v) + '"' +
@@ -626,11 +733,25 @@
     });
   }
 
+  function configDefault(key) {
+    var found = null;
+    SECTIONS.forEach(function (s) {
+      var sec = defaults[s.id];
+      if (sec && sec[key] !== undefined) found = sec[key];
+    });
+    return found;
+  }
+
   function defaultOvValue(key) {
     var f = OVERRIDE_FIELDS.filter(function (x) { return x.key === key; })[0] || {};
     if (f.type === "bool") return false;
     if (f.type === "list") return [];
     if (f.type === "number") return f.min != null ? f.min : 0;
+    if (f.type === "select") {
+      var d = configDefault(key);
+      if (d != null) return d;
+      return (f.options && f.options[0]) ? f.options[0].value : "";
+    }
     return "";
   }
 
