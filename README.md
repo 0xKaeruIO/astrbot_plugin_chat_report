@@ -170,9 +170,27 @@ AI 输出 JSON：`decision` / `confidence` / `reason` / `target_message_id`，�
 ### WebUI 配置
 
 - **面板插件配置**：`_conf_schema.json`，4 组（AI 研判 / 默认群配置 / 行为开关 / 通知模板），
-  AI 研判组内含「上下文与玩笑豁免」卡片，默认群配置组内含「证据留存与指定管理员」卡片。
+  AI 研判组内含「上下文与玩笑豁免」卡片，默认群配置组内含「证据留存与指定管理员」「自动审查」卡片。
 - **独立配置页面**：`pages/config`，分 5 个区（AI 研判 / 默认群配置 / 行为开关 / 通知模板 / 分群覆盖），
   支持卡片式编辑、模板变量一键插入、模板恢复默认、**可视化分群覆盖**（勾选要覆盖的项即可，无需手写 JSON）。
+
+### 代码结构
+
+`main.py` 只保留插件注册、初始化与事件入口，具体逻辑按职责拆到 `chat_report_core/`：
+
+| 文件 | 职责 |
+|:---|:---|
+| `main.py` | `@register`、`__init__`、生命周期、群消息/私聊事件入口 |
+| `chat_report_core/constants.py` | 模板、提示词、缓存上限、消息段展示文案 |
+| `chat_report_core/utils.py` | 模板渲染、时长格式化、JSON 提取、共享异常 |
+| `chat_report_core/config.py` | 配置读取、分群覆盖、schema 与 WebUI 配置接口 |
+| `chat_report_core/state.py` | 持久化、计数、限流、审计、超时清理 |
+| `chat_report_core/context.py` | 消息缓存、消息链解析、上下文回溯、群成员/昵称解析 |
+| `chat_report_core/ai.py` | 举报研判、自动审查 AI 调用与结果归一化 |
+| `chat_report_core/evidence.py` | 证据组装/落盘、合并转发、先留证再处罚 |
+| `chat_report_core/notify.py` | 私聊/群内通知、收件人解析、待处理举报登记 |
+| `chat_report_core/report.py` | 举报触发解析与举报主流程 |
+| `chat_report_core/auto_review.py` | 按群自动审查、三种通知模式 |
 
 ## 📦 安装
 
