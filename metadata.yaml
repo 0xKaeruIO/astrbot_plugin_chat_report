@@ -3,7 +3,7 @@ display_name: 聊天消息举报
 desc: 聊天消息举报插件：AI 结合上下文研判，支持按群自动审查、主动冲突预警与中性劝停、可选图片理解（违规图/二维码/引流图/聊天截图），上下文打包为 QQ 聊天记录合并转发，证据先行，能识别熟人玩笑不误禁言，违规先私聊转发证据再撤回/警告/禁言，拿不准时转人工处理
 short_desc: 聊天消息举报与AI自动研判处理
 author: yosers
-version: 1.0.9
+version: 1.0.10
 repo: https://github.com/yoser-s/astrbot_plugin_chat_report
 license: MIT
 support_platforms:

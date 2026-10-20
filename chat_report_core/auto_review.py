@@ -16,7 +16,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.config.astrbot_config import AstrBotConfig
-from astrbot.core.message.components import At, Plain, Reply
+from astrbot.core.message.components import At, Image, Plain, Reply
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -24,6 +24,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
 from .constants import (
     PLUGIN_NAME,
     DEFAULT_AUTO_REVIEW_TEMPLATE,
+    MAX_FORWARD_MEDIA_CHARS,
 )
 
 from .utils import (
@@ -430,6 +431,64 @@ class AutoReviewMixin:
             "action_plan": "撤回该消息并禁言",
         }
 
+    def _item_images(self, item: dict[str, Any]) -> list[Image]:
+        """取出消息里的图片组件；优先 components，缺失时从 raw_segments 还原。"""
+        images = [
+            comp
+            for comp in (item.get("components") or [])
+            if isinstance(comp, Image)
+        ]
+        if images:
+            return images
+        for seg in item.get("raw_segments") or []:
+            if not isinstance(seg, dict) or seg.get("type") != "image":
+                continue
+            data = seg.get("data") or {}
+            url = str(data.get("url") or "")
+            path = str(data.get("path") or "")
+            file = str(data.get("file") or "")
+            source = url or path or file
+            if source:
+                images.append(Image(file=file or source, url=url, path=path))
+        return images
+
+    def _strip_item_images(self, item: dict[str, Any]) -> dict[str, Any]:
+        """把违规消息里的图片替换成占位文字，图片改为单独私聊发送。"""
+        if not self._item_images(item):
+            return item
+        copy = dict(item)
+        components = item.get("components") or []
+        if components:
+            kept = [
+                comp for comp in components if not isinstance(comp, Image)
+            ]
+            kept.append(Plain("[违规图片已单独发送]"))
+            copy["components"] = kept
+        raw_segments = item.get("raw_segments") or []
+        if raw_segments:
+            kept_raw = [
+                seg
+                for seg in raw_segments
+                if not (isinstance(seg, dict) and seg.get("type") == "image")
+            ]
+            kept_raw.append(
+                {"type": "text", "data": {"text": "[违规图片已单独发送]"}}
+            )
+            copy["raw_segments"] = kept_raw
+        return copy
+
+    async def _item_image_segments(
+        self, item: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """把违规消息里的图片转成可单独私聊发送的消息段。"""
+        budget = {"items": 20, "chars": MAX_FORWARD_MEDIA_CHARS}
+        segments: list[dict[str, Any]] = []
+        for image in self._item_images(item):
+            segment = await self._media_forward_segment(image, budget)
+            if segment.get("type") == "image":
+                segments.append(segment)
+        return segments
+
     async def _send_auto_review_notice(
         self,
         event: AstrMessageEvent,
@@ -453,6 +512,25 @@ class AutoReviewMixin:
         if not receivers:
             logger.warning(f"[{PLUGIN_NAME}] 自动审查通知无人可发：群{group_id}")
             return []
+
+        # 违规图片不嵌进聊天记录：先从节点中剥离，通知成功后再逐张私聊发送
+        detached_images: dict[str, list[dict[str, Any]]] = {}
+        for finding in findings:
+            message_id = str(finding.get("message_id") or "")
+            item = finding.get("item")
+            if not message_id or not isinstance(item, dict) or message_id in detached_images:
+                continue
+            if not self._item_images(item):
+                continue
+            segments = await self._item_image_segments(item)
+            if segments:
+                detached_images[message_id] = segments
+        record_items = [
+            self._strip_item_images(item)
+            if str(item.get("message_id") or "") in detached_images
+            else item
+            for item in items
+        ]
 
         first = self._item_time_text(items[0])
         last = self._item_time_text(items[-1])
@@ -518,10 +596,18 @@ class AutoReviewMixin:
             receivers,
             tpl,
             title_prefix="自动审查",
-            context_items=items,
+            context_items=record_items,
             attach_text=False,
             markers=markers,
         )
+        for uid in sent:
+            for segments in detached_images.values():
+                for segment in segments:
+                    ok = await self._send_private(event, uid, [segment], group_id)
+                    if not ok:
+                        logger.warning(
+                            f"[{PLUGIN_NAME}] 违规图片单独发送给 {uid} 失败"
+                        )
         if failed:
             await self._notify_in_group(
                 event, group_id, failed, text

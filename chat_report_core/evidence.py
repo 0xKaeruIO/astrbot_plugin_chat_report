@@ -497,10 +497,19 @@ class EvidenceMixin:
         text = _render(tpl, ctx)
         nodes: list[dict[str, Any]] = []
         if context_items and bool(conf.get("evidence_use_forward", True)):
+            record_items = context_items
+            if ctx.get("is_auto_review") and ctx.get("message_id"):
+                target_id = str(ctx.get("message_id"))
+                record_items = [
+                    self._strip_item_images(item)
+                    if str(item.get("message_id") or "") == target_id
+                    else item
+                    for item in context_items
+                ]
             summary_ctx = dict(ctx)
             summary_ctx["context_log"] = "（见本条聊天记录中的上下文消息）"
             nodes = await self._build_forward_nodes(
-                context_items,
+                record_items,
                 title=f"举报证据-{ctx.get('report_id', '')}",
                 summary_text=_render(tpl, summary_ctx),
                 self_id=self._event_self_id(event),
