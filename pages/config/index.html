@@ -486,6 +486,33 @@
           { key: "reply_content", label: "管理员处理完成的回复内容", type: "text" }
         ]
       }, {
+        title: "冲突观察", desc: "主动发现两人/多人争执：通知管理员 + 一条中性劝停，不撤回、不禁言",
+        fields: [
+          { key: "conflict_detection_enabled", label: "启用主动冲突观察", type: "bool",
+            hint: "每 20 秒检查有最近消息的群；不需要有人举报，发现争执后预警" },
+          { key: "conflict_min_participants", label: "最少参与人数", type: "number",
+            min: 2, max: 10, step: 1, unit: "人", hint: "窗口内至少多少个不同发言人" },
+          { key: "conflict_window_messages", label: "检测窗口消息数", type: "number",
+            min: 5, max: 60, step: 5, unit: "条" },
+          { key: "conflict_window_minutes", label: "检测窗口时长", type: "number",
+            min: 1, max: 120, step: 1, unit: "分钟" },
+          { key: "conflict_min_new_messages", label: "触发研判的新消息数", type: "number",
+            min: 1, max: 30, step: 1, unit: "条", hint: "上次扫描后至少新增多少条才再次调用 AI" },
+          { key: "conflict_cooldown_minutes", label: "同群预警冷却", type: "number",
+            min: 1, max: 120, step: 1, unit: "分钟" },
+          { key: "conflict_min_severity", label: "最低预警严重程度", type: "select",
+            options: [
+              { value: "low", label: "低" },
+              { value: "medium", label: "中" },
+              { value: "high", label: "高" }
+            ] },
+          { key: "conflict_notify_admin", label: "冲突时私聊管理员", type: "bool" },
+          { key: "conflict_mediate", label: "冲突时群内中性劝停", type: "bool",
+            hint: "只发一条带 @ 的中性消息，不撤回、不禁言" },
+          { key: "conflict_extra_prompt", label: "冲突观察补充要求", type: "textarea", rows: 3,
+            hint: "追加到冲突判断提示词，例如「游戏代练拉群也算冲突前兆」" }
+        ]
+      }, {
         title: "超时处理",
         fields: [
           { key: "report_expire_minutes", label: "举报超时未处理时长", type: "number",
@@ -504,6 +531,12 @@
             hint: "AI 自动处理时在群内发送，会先自动艾特被举报人" },
           { key: "group_broadcast_template", label: "群内处理结果播报模板", type: "textarea", rows: 3,
             vars: ["report_id", "handler"], hint: "仅在「在群内播报处理结果」开启时使用" },
+          { key: "conflict_notify_template", label: "群聊冲突预警模板", type: "textarea", rows: 9,
+            vars: ["group_name", "group_id", "occur_time", "conflict_type_label", "participants", "summary", "trend_label", "recent_messages", "suggestion"],
+            hint: "冲突预警私聊内容；参与人员会格式化为「A（发起）、B（回应）」" },
+          { key: "conflict_mediate_template", label: "群内中性劝停模板", type: "textarea", rows: 4,
+            vars: ["participants", "group_id"],
+            hint: "只发一条带 @ 的群消息，不撤回、不禁言" },
           { key: "safe_group_template", label: "群内安全提示模板", type: "textarea", rows: 3,
             vars: ["target", "group_name", "group_id", "reporter", "report_id", "ai_judgement", "ai_confidence", "target_report_count"],
             hint: "仅在「AI 判断安全时在群内发提示」开启时使用" }
@@ -561,6 +594,20 @@
     { key: "ai_vision_detect_qr", label: "识别二维码", type: "bool" },
     { key: "ai_vision_detect_diversion", label: "识别引流图", type: "bool" },
     { key: "ai_vision_read_screenshots", label: "读取聊天截图", type: "bool" },
+    { key: "conflict_detection_enabled", label: "启用主动冲突观察", type: "bool" },
+    { key: "conflict_min_participants", label: "冲突最少人数", type: "number", min: 2, max: 10, step: 1, unit: "人" },
+    { key: "conflict_window_messages", label: "冲突窗口消息数", type: "number", min: 5, max: 60, step: 5, unit: "条" },
+    { key: "conflict_window_minutes", label: "冲突窗口时长", type: "number", min: 1, max: 120, step: 1, unit: "分钟" },
+    { key: "conflict_min_new_messages", label: "冲突研判新消息数", type: "number", min: 1, max: 30, step: 1, unit: "条" },
+    { key: "conflict_cooldown_minutes", label: "冲突预警冷却", type: "number", min: 1, max: 120, step: 1, unit: "分钟" },
+    { key: "conflict_min_severity", label: "最低预警等级", type: "select", options: [
+      { value: "low", label: "低" },
+      { value: "medium", label: "中" },
+      { value: "high", label: "高" }
+    ] },
+    { key: "conflict_notify_admin", label: "冲突私聊管理员", type: "bool" },
+    { key: "conflict_mediate", label: "冲突群内劝停", type: "bool" },
+    { key: "conflict_extra_prompt", label: "冲突观察补充", type: "textarea", rows: 3 },
     { key: "evidence_admin_ids", label: "指定管理员 / 群主 QQ", type: "list", rows: 3 },
     { key: "evidence_required", label: "证据未送达不处罚", type: "bool" },
     { key: "not_admin_evidence_only", label: "非管理员只留证", type: "bool" },

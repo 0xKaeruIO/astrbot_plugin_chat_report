@@ -141,6 +141,35 @@ class ConfigMixin:
             "ai_vision_extra_prompt": str(
                 self._c("ai_vision_extra_prompt", "") or ""
             ),
+            # 主动冲突观察
+            "conflict_detection_enabled": bool(
+                self._c("conflict_detection_enabled", False)
+            ),
+            "conflict_min_participants": int(
+                self._c("conflict_min_participants", 2)
+            ),
+            "conflict_window_messages": int(
+                self._c("conflict_window_messages", 20)
+            ),
+            "conflict_window_minutes": int(
+                self._c("conflict_window_minutes", 10)
+            ),
+            "conflict_min_new_messages": int(
+                self._c("conflict_min_new_messages", 6)
+            ),
+            "conflict_cooldown_minutes": int(
+                self._c("conflict_cooldown_minutes", 10)
+            ),
+            "conflict_min_severity": str(
+                self._c("conflict_min_severity", "medium") or "medium"
+            ),
+            "conflict_notify_admin": bool(
+                self._c("conflict_notify_admin", True)
+            ),
+            "conflict_mediate": bool(self._c("conflict_mediate", True)),
+            "conflict_extra_prompt": str(
+                self._c("conflict_extra_prompt", "") or ""
+            ),
             # 证据留存
             "evidence_admin_ids": list(self._c("evidence_admin_ids", []) or []),
             "evidence_required": bool(self._c("evidence_required", True)),

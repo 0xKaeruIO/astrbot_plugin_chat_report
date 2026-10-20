@@ -3,6 +3,7 @@
 from .ai import AIMixin
 from .auto_review import AutoReviewMixin
 from .config import ConfigMixin
+from .conflict import ConflictMixin
 from .context import ContextMixin
 from .evidence import EvidenceMixin
 from .notify import NotifyMixin
@@ -14,6 +15,7 @@ __all__ = [
     "AIMixin",
     "AutoReviewMixin",
     "ConfigMixin",
+    "ConflictMixin",
     "ContextMixin",
     "EvidenceMixin",
     "NotifyMixin",

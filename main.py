@@ -22,6 +22,7 @@ from .chat_report_core import (
     AIMixin,
     AutoReviewMixin,
     ConfigMixin,
+    ConflictMixin,
     ContextMixin,
     EvidenceMixin,
     NotifyMixin,
@@ -42,7 +43,7 @@ from .chat_report_core.utils import _render
     "astrbot_plugin_chat_report",
     "yosers",
     "聊天消息举报：结合上下文研判，证据先私聊转发指定管理员再撤回禁言，拿不准转人工处理，支持按群自动审查",
-    "1.0.3",
+    "1.0.4",
 )
 class ChatReportPlugin(
     ConfigMixin,
@@ -54,6 +55,7 @@ class ChatReportPlugin(
     NotifyMixin,
     ReportMixin,
     AutoReviewMixin,
+    ConflictMixin,
     Star,
 ):
     """聊天举报插件：组合各职责 Mixin，自身只保留生命周期与事件入口。"""
@@ -97,6 +99,10 @@ class ChatReportPlugin(
         # 每个群最近一次事件，供定时自动审查在群安静时也能触发
         self._last_events: dict[str, Any] = {}
         self._auto_review_task: asyncio.Task | None = None
+        # group_id -> {last_scan_mid, last_alert_ts, last_alert_mid}
+        self._conflict_state: dict[str, dict[str, Any]] = {}
+        self._conflict_running: set[str] = set()
+        self._conflict_task: asyncio.Task | None = None
         # 已处理过的消息 ID（避免自动审查重复处罚同一条消息）
         self._acted_message_ids: deque = deque(maxlen=500)
         # user_id -> 展示名（群里解析到的名片/昵称），私聊通知时用来避免显示成“临时会话(xxx)”
@@ -111,6 +117,7 @@ class ChatReportPlugin(
         """插件加载时启动举报超时清理与自动审查定时任务。"""
         self._expire_task = asyncio.create_task(self._expire_loop())
         self._auto_review_task = asyncio.create_task(self._auto_review_loop())
+        self._conflict_task = asyncio.create_task(self._conflict_loop())
         logger.info(f"[{PLUGIN_NAME}] 举报插件已加载，数据目录：{self.data_dir}")
 
     async def terminate(self):
@@ -119,6 +126,8 @@ class ChatReportPlugin(
             self._expire_task.cancel()
         if self._auto_review_task:
             self._auto_review_task.cancel()
+        if self._conflict_task:
+            self._conflict_task.cancel()
         self._save_state()
         self._save_auto_review_state()
 

@@ -439,6 +439,91 @@
                     "step": 5
                 },
                 "default": 60
+            },
+            "conflict_detection_enabled": {
+                "description": "启用主动冲突观察",
+                "hint": "开启后每 20 秒检查有最近消息的群，发现两人/多人争执时通知管理员并可中性劝停；不需要有人举报",
+                "type": "bool",
+                "default": false
+            },
+            "conflict_min_participants": {
+                "description": "冲突最少参与人数",
+                "hint": "窗口内至少有多少个不同发言人，才交给 AI 判断冲突；建议 2",
+                "type": "int",
+                "slider": {
+                    "min": 2,
+                    "max": 10,
+                    "step": 1
+                },
+                "default": 2
+            },
+            "conflict_window_messages": {
+                "description": "冲突检测窗口消息数",
+                "hint": "每次取最近多少条消息判断争执",
+                "type": "int",
+                "slider": {
+                    "min": 5,
+                    "max": 60,
+                    "step": 5
+                },
+                "default": 20
+            },
+            "conflict_window_minutes": {
+                "description": "冲突检测窗口分钟数",
+                "hint": "只分析最近多少分钟内的消息",
+                "type": "int",
+                "slider": {
+                    "min": 1,
+                    "max": 120,
+                    "step": 1
+                },
+                "default": 10
+            },
+            "conflict_min_new_messages": {
+                "description": "触发冲突研判的新消息数",
+                "hint": "上次扫描后至少新增多少条消息才再次调用 AI，避免频繁请求",
+                "type": "int",
+                "slider": {
+                    "min": 1,
+                    "max": 30,
+                    "step": 1
+                },
+                "default": 6
+            },
+            "conflict_cooldown_minutes": {
+                "description": "同群冲突预警冷却(分钟)",
+                "hint": "同一群触发一次冲突预警后，至少间隔多久才再次预警",
+                "type": "int",
+                "slider": {
+                    "min": 1,
+                    "max": 120,
+                    "step": 1
+                },
+                "default": 10
+            },
+            "conflict_min_severity": {
+                "description": "触发预警的最低严重程度",
+                "hint": "low / medium / high；低于该等级只记录不通知",
+                "type": "string",
+                "default": "medium"
+            },
+            "conflict_notify_admin": {
+                "description": "冲突时私聊管理员",
+                "hint": "把冲突预警私聊发给全局管理员、指定 QQ 和（可选）群管理员",
+                "type": "bool",
+                "default": true
+            },
+            "conflict_mediate": {
+                "description": "冲突时群内中性劝停",
+                "hint": "只发一条带 @ 的中性消息，不撤回、不禁言；可在模板里自定义话术",
+                "type": "bool",
+                "default": true
+            },
+            "conflict_extra_prompt": {
+                "description": "冲突观察补充要求",
+                "hint": "追加到冲突判断提示词，例如「游戏代练拉群也算冲突前兆」",
+                "type": "text",
+                "default": ""
             }
         }
     },
@@ -505,6 +590,18 @@
                 "hint": "仅在「在群内播报处理结果」开启时使用",
                 "type": "text",
                 "default": "举报（{report_id}）已由 {handler} 处理完成。"
+            },
+            "conflict_notify_template": {
+                "description": "群聊冲突预警模板",
+                "hint": "可用变量：{group_name} {group_id} {occur_time} {conflict_type_label} {participants} {summary} {trend_label} {recent_messages} {suggestion}",
+                "type": "text",
+                "default": "【群聊冲突预警】\n群：{group_name}({group_id})\n时间：{occur_time}\n类型：{conflict_type_label}\n参与人员：{participants}\n冲突摘要：{summary}\n升级趋势：{trend_label}\n最近消息：\n{recent_messages}\n建议：{suggestion}"
+            },
+            "conflict_mediate_template": {
+                "description": "群内中性劝停模板",
+                "hint": "只发一条带 @ 的群消息，不撤回、不禁言；可用变量：{participants} {group_id}",
+                "type": "text",
+                "default": "疑似争执，已经通知管理员处理。\n有矛盾请不要继续在群里互相攻击。"
             }
         }
     }

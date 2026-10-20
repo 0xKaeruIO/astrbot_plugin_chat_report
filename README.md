@@ -7,6 +7,7 @@ _✨ 聊天消息举报插件 ✨_
 撤回 / 禁言之前一律**证据先行**：先把违规发言、上下文与 AI 结论私聊转发给指定管理员并落盘留存。
 也可以按群开启**自动审查**：达到指定消息条数或时间间隔后自动巡查最近聊天记录，按三种通知模式汇报。
 配置视觉模型后，还可以让 AI 查看被举报图片、上下文图片、聊天记录截图，检查违规图片、二维码和引流图。
+开启冲突观察后，后台会主动发现两人/多人争执，私聊管理员并只发一条中性劝停消息，不处罚。
 
 ## 💡 功能特性
 
@@ -189,6 +190,28 @@ AI 输出 JSON：`decision` / `confidence` / `reason` / `target_message_id`，�
 
 自动审查状态会写入 `auto_review_state.json`，保存每群的 `pending`、上次审查时间与上次审查到的消息位置，重启后继续累计，避免重复审查。状态受三重上限保护：`auto_review_state_max_groups`（默认 200 个群）、`auto_review_pending_cap`（默认单群 10000 条）、文件总大小 512KB；超限时优先淘汰最久未活动的群。
 
+### 主动冲突观察（不需要举报）
+
+开启 `conflict_detection_enabled` 后，后台每 20 秒检查有最近消息的群：
+
+- 最近 `conflict_window_messages` 条 / `conflict_window_minutes` 分钟内；
+- 至少 `conflict_min_participants` 个不同发言人；
+- 上次扫描后新增至少 `conflict_min_new_messages` 条；
+- AI 判断为真实争执，且严重程度不低于 `conflict_min_severity`。
+
+发生冲突时：
+
+1. 私聊管理员发送「群聊冲突预警」，包含群、时间、两人/多人争执类型、参与人员及角色、冲突摘要、升级趋势、最近消息和处理建议；
+2. 按 `conflict_mediate` 在群里发**一条**中性消息，只艾特冲突双方：
+
+```text
+@A @B 疑似争执，已经通知管理员处理。
+有矛盾请不要继续在群里互相攻击。
+```
+
+不会撤回、不禁言；同群 `conflict_cooldown_minutes` 内不重复预警。
+AI 会把参与者分为发起者、回应者、劝架者、旁观者，避免把劝架的人当成冲突方。
+
 ### 防封号
 
 默认情况下，转人工 / 安全通知会在正文附带上下文，并在之后单独发一条 QQ「聊天记录」合并转发作为证据存档（这是本插件的核心改进：管理员必须能看到前因后果才判得准）。
@@ -334,6 +357,16 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `receiver_can_handle` | `true` | 指定用户与管理同等处理权限 |
 | `reply_content` | `1` | 管理员处理完成的回复内容 |
 | `report_expire_minutes` | 60 | 超时未处理时长（分钟），超时标记 `expired` |
+| `conflict_detection_enabled` | `false` | 主动冲突观察总开关 |
+| `conflict_min_participants` | 2 | 窗口内最少不同发言人数 |
+| `conflict_window_messages` | 20 | 冲突检测窗口消息数 |
+| `conflict_window_minutes` | 10 | 冲突检测窗口时长（分钟） |
+| `conflict_min_new_messages` | 6 | 上次扫描后至少新增多少条才再次研判 |
+| `conflict_cooldown_minutes` | 10 | 同群冲突预警冷却（分钟） |
+| `conflict_min_severity` | `medium` | 触发预警的最低严重程度 |
+| `conflict_notify_admin` | `true` | 冲突时私聊管理员 |
+| `conflict_mediate` | `true` | 冲突时发一条群内中性劝停 |
+| `conflict_extra_prompt` | 空 | 冲突观察补充提示词 |
 
 ### 模板
 
@@ -345,6 +378,8 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `manual_notify_template` | 转人工通知（引用举报，含消息内容、上下文与事情起因） |
 | `manual_notify_template_nocontent` | 转人工通知（无引用 @ 举报：不单独展示消息原文，上下文记录同样附带） |
 | `evidence_template` | **证据转发模板**：撤回 / 禁言前私聊发给指定管理员的证据文案，含完整上下文；机器人不是管理员时同一条模板用于仅留证转发，后续动作用 `{action_plan}` |
+| `conflict_notify_template` | 群聊冲突预警私聊模板 |
+| `conflict_mediate_template` | 群内中性劝停模板（代码会自动在前面加 @冲突双方） |
 | `malicious_notify_template` | **疑似恶意举报模板**：举报人未参与对话且属玩笑互动时，用它私聊提示管理员 |
 | `auto_review_notify_template` | **自动审查通知模板**：模式 1/2/3 共用，含审查范围、违规条数、处理结果与聊天记录 |
 | `resolved_notify_template` | 处理完成通知 |
@@ -379,6 +414,10 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `{action_plan}` | 后续动作说明：正常处理为「撤回该消息 + 禁言 X」，机器人非管理员时为「仅留存证据，请管理员手动处理」 |
 | `{review_scope}` | 自动审查范围（最近 N 条 / N 分钟内） |
 | `{violation_count}` | 自动审查发现的违规条数 |
+| `{conflict_type_label}` | 冲突类型：两人争执 / 多人争执 |
+| `{trend_label}` | 冲突趋势：正在升级 / 持续对峙 / 正在降温 |
+| `{recent_messages}` | 冲突窗口内的最近消息摘要 |
+| `{suggestion}` | 给管理员的处理建议 |
 
 变量缺失时会原样保留 `{变量名}`，不会报错。
 
@@ -392,6 +431,8 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 `context_enabled`、`context_before_count`、`context_after_count`、`banter_guard`、
 `ai_vision_enabled`、`ai_vision_max_images`、`ai_vision_target_images`、`ai_vision_context_images`、
 `ai_vision_detect_violation`、`ai_vision_detect_qr`、`ai_vision_detect_diversion`、`ai_vision_read_screenshots`、`ai_vision_extra_prompt`、
+`conflict_detection_enabled`、`conflict_min_participants`、`conflict_window_messages`、`conflict_window_minutes`、
+`conflict_min_new_messages`、`conflict_cooldown_minutes`、`conflict_min_severity`、`conflict_notify_admin`、`conflict_mediate`、`conflict_extra_prompt`、
 `evidence_admin_ids`、`evidence_required`、`not_admin_evidence_only`、`notify_include_context`、`forward_context_records`、`notify_admin_on_suspected_malicious`,、
 `auto_review_enabled`、`auto_review_message_threshold`、`auto_review_interval_minutes`、
 `auto_review_scope_count`、`auto_review_scope_minutes`、`auto_review_notify_mode`、`auto_review_max_actions`、
@@ -412,6 +453,16 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `ai_vision_detect_diversion` | bool | 识别引流图 |
 | `ai_vision_read_screenshots` | bool | 读取聊天记录截图 |
 | `ai_vision_extra_prompt` | text | 图片检查补充要求 |
+| `conflict_detection_enabled` | bool | 该群是否启用主动冲突观察 |
+| `conflict_min_participants` | number | 冲突最少参与人数 |
+| `conflict_window_messages` | number | 冲突检测窗口消息数 |
+| `conflict_window_minutes` | number | 冲突检测窗口分钟数 |
+| `conflict_min_new_messages` | number | 触发研判的新消息数 |
+| `conflict_cooldown_minutes` | number | 同群预警冷却 |
+| `conflict_min_severity` | string | 最低预警严重程度 |
+| `conflict_notify_admin` | bool | 冲突私聊管理员 |
+| `conflict_mediate` | bool | 冲突群内劝停 |
+| `conflict_extra_prompt` | text | 冲突观察补充要求 |
 | `evidence_admin_ids` | list | 该群的证据接收 QQ |
 | `evidence_required` | bool | 该群证据未送达是否跳过处罚 |
 | `not_admin_evidence_only` | bool | 该群机器人不是管理员时是否只留证转发 |
