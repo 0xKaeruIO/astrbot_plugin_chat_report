@@ -97,11 +97,13 @@ class NotifyMixin:
         context_items: list[dict[str, Any]] | None = None,
         use_forward: bool = True,
         respect_notify_context: bool = True,
+        attach_text: bool = True,
     ) -> tuple[list[str], list[str], str, bool]:
         """发送通知文本，并在需要时单独发送聊天记录证据。
 
-        通知和聊天记录是两条独立消息：先发带元数据/上下文/事情起因的通知文本，
-        再发一条 QQ 合并转发聊天记录作为证据存档；合并转发失败不影响通知送达。
+        默认先发通知文本、再发聊天记录；自动审查可把 attach_text 设为 False，
+        只发一条合并转发聊天记录，避免「纯文本 + 聊天记录」重复。
+        合并转发不可用时仍会退回纯文本，保证通知不丢。
 
         Args:
             receivers: 接收人 QQ 集合或列表。
@@ -110,6 +112,7 @@ class NotifyMixin:
             context_items: 上下文条目；为空时只发通知文本。
             use_forward: 是否允许发送独立的聊天记录证据。
             respect_notify_context: 是否受 notify_include_context 开关约束。
+            attach_text: 是否在聊天记录之外再发一条纯文本通知；False 时优先只发记录。
 
         Returns:
             (失败 QQ 列表, 成功 QQ 列表, 纯文本兜底内容, 是否至少成功发送一次聊天记录)
@@ -147,12 +150,17 @@ class NotifyMixin:
         failed: list[str] = []
         forward_sent = 0
         for uid in receivers:
-            text_ok = await self._send_private(event, uid, full_text, group_id)
+            text_ok = False
+            if attach_text:
+                text_ok = await self._send_private(event, uid, full_text, group_id)
             record_ok = False
             if nodes:
                 record_ok = await self._send_private_forward_nodes(
                     event, uid, group_id, nodes
                 )
+            if not attach_text and not record_ok:
+                # 记录发送失败时保留一条纯文本兜底，避免完全收不到通知
+                text_ok = await self._send_private(event, uid, full_text, group_id)
             if text_ok or record_ok:
                 sent.append(uid)
             else:

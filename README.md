@@ -186,7 +186,7 @@ AI 输出 JSON：`decision` / `confidence` / `reason` / `target_message_id`，�
 2. `safe_silent`：安全则不通知（默认）；
 3. `after_action`：仅处理后保留证据并通知（没处理就不发）。
 
-自动审查通知同样先发通知文本，再单独发一条聊天记录作为证据存档；处理违规时仍按「先证据、后撤回/禁言」执行。
+自动审查只发一条 QQ「聊天记录」合并转发，通知内容放在首条摘要节点，不再额外发一条纯文本；处理违规时仍按「先证据、后撤回/禁言」执行。
 
 自动审查状态会写入 `auto_review_state.json`，保存每群的 `pending`、上次审查时间与上次审查到的消息位置，重启后继续累计，避免重复审查。状态受三重上限保护：`auto_review_state_max_groups`（默认 200 个群）、`auto_review_pending_cap`（默认单群 10000 条）、文件总大小 512KB；超限时优先淘汰最久未活动的群。
 
@@ -347,7 +347,7 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `notify_admin_when_safe` | `false` | AI 判断安全时私聊通知管理员与指定用户 |
 | `announce_safe_in_group` | `false` | **AI 判断安全时在群内发一条安全提示** |
 | `notify_include_context` | `true` | 转人工 / 安全 / 证据通知自动附带发生时间、参与人员、上下文聊天记录与事情起因；模板里已含 `{context_log}` 时不会重复追加 |
-| `forward_context_records` | `true` | 通知文本之后，再单独发一条 QQ「聊天记录」合并转发作为证据存档；关闭后只在通知正文里附带聊天原文 |
+| `forward_context_records` | `true` | 转人工/安全通知先发文本再单独发聊天记录；自动审查只发一条合并转发记录，不再发纯文本；关闭后只在通知正文里附带聊天原文 |
 | `notify_admin_on_suspected_malicious` | `true` | 举报人未参与该段对话、且上下文判定为玩笑互动时，私聊提示管理员（用「疑似恶意举报模板」），不处罚被举报人 |
 | `notify_on_resolved` | `true` | 处理完成后通知其他已通知对象 |
 | `broadcast_result_in_group` | `false` | 在群内播报处理结果 |

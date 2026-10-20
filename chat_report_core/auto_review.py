@@ -452,6 +452,7 @@ class AutoReviewMixin:
             tpl,
             title_prefix="自动审查",
             context_items=items,
+            attach_text=False,
         )
         if failed:
             await self._notify_in_group(
