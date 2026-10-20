@@ -6,6 +6,7 @@ _✨ 聊天消息举报插件 ✨_
 再由 AI 自动研判举报内容，能处理就自动撤回、警告、禁言；拿不准时才私聊管理员与本群指定用户，由人工回复处理。
 撤回 / 禁言之前一律**证据先行**：先把违规发言、上下文与 AI 结论私聊转发给指定管理员并落盘留存。
 也可以按群开启**自动审查**：达到指定消息条数或时间间隔后自动巡查最近聊天记录，按三种通知模式汇报。
+配置视觉模型后，还可以让 AI 查看被举报图片、上下文图片、聊天记录截图，检查违规图片、二维码和引流图。
 
 ## 💡 功能特性
 
@@ -94,11 +95,37 @@ AI 输出 JSON：`decision` / `confidence` / `reason` / `target_message_id`，�
 | `violate` 但无法定位消息 ID | 转人工（通知里说明原因） |
 | `safe` | 视开关决定：是否在群内发安全提示 / 是否私聊通知管理员 |
 | `uncertain` 或置信度低于阈值 | 转人工 |
-| 被举报消息是非文本（纯图片 / 语音 / 文件） | 直接转人工，不自动分析 |
+| 被举报消息是纯图片 | 开启「图片理解」后交给视觉模型分析；未开启或没有可读取图片时转人工；语音/文件暂不送视觉 |
 
 - 研判时**附带上下文**：上下文聊天记录、参与人员、发生时间都会进提示词，AI 还要额外给出「上下文结论」。
 - 消息内容渲染为可读文本：图片 → `[图片]`、表情 → `[表情]`、语音 → `[语音]`、视频 → `[视频]`、文件 → `[文件]` 等，不会出现 `ComponentType.Image` 这类内部名。
 - 无引用举报时，会把被举报人最近 N 条缓存消息（带消息 ID）交给 AI，供其挑选违规消息以便撤回。
+
+### 图片理解（需要视觉模型）
+
+开启 `ai_vision_enabled` 后，插件会把被举报消息/自动审查候选消息以及上下文中的图片传给 AI。**必须同时满足：**
+
+1. 当前 AI 提供商支持 `image_urls`；
+2. 模型本身支持视觉（GPT-4o、Claude、Gemini 等）。
+
+如果提供方不支持 `image_urls`，插件会记录日志并自动退回纯文本，不会中断举报流程。
+
+可单独开关的检查项：
+
+| 开关 | 默认 | 检查内容 |
+|:---|:---:|:---|
+| `ai_vision_target_images` | 开 | 被举报/候选消息里的图片 |
+| `ai_vision_context_images` | 开 | 上下文里其他图片，用于还原前后文 |
+| `ai_vision_detect_violation` | 开 | 色情、暴力、血腥、违法、辱骂、恐吓、诈骗等 |
+| `ai_vision_detect_qr` | 开 | 二维码、小程序码、群二维码、收款码 |
+| `ai_vision_detect_diversion` | 开 | 联系方式、广告、拉群、站外导流、刷单、诈骗话术 |
+| `ai_vision_read_screenshots` | 开 | 聊天记录截图中的对话、昵称、时间与上下文 |
+
+单次最多 `ai_vision_max_images` 张（默认 4，最大 8）；图片过多时优先保留被举报/候选消息图片。
+`ai_vision_extra_prompt` 可以追加自定义检查要求，例如「重点检查游戏代练广告和收款码」。
+
+图片理解只处理 `Image` 消息段；语音转文字、视频和文件内容暂未接入。
+二维码和截图文字都由视觉模型识别，未接入独立二维码解码/OCR 引擎；模糊、过小或遮挡的二维码可能只能判断“存在”，不保证解出链接。
 
 ### 转人工通知
 
@@ -189,6 +216,7 @@ AI 输出 JSON：`decision` / `confidence` / `reason` / `target_message_id`，�
 | `chat_report_core/state.py` | 持久化、计数、限流、审计、超时清理 |
 | `chat_report_core/context.py` | 消息缓存、消息链解析、上下文回溯、群成员/昵称解析 |
 | `chat_report_core/ai.py` | 举报研判、自动审查 AI 调用与结果归一化 |
+| `chat_report_core/vision.py` | 图片引用收集、视觉提示词与开关控制 |
 | `chat_report_core/evidence.py` | 证据组装/落盘、合并转发、先留证再处罚 |
 | `chat_report_core/notify.py` | 私聊/群内通知、收件人解析、待处理举报登记 |
 | `chat_report_core/report.py` | 举报触发解析与举报主流程 |
@@ -242,6 +270,15 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `context_fetch_history` | `true` | 缓存不足时调用 `get_group_msg_history` 拉取群历史补齐，需要机器人有权限，失败自动退回本地缓存 |
 | `context_max_chars` | 3000 | 上下文文本上限（字符，500–12000），超出时从最早的记录开始裁剪 |
 | `banter_guard` | `true` | 玩笑 / 互喷豁免：AI 判定为双方玩笑互动时，含辱骂词也不处罚；AI 判定严重程度为 `high` 时仍照常处理 |
+| `ai_vision_enabled` | `false` | 启用图片理解，需要支持视觉的模型与 `image_urls` 的提供商 |
+| `ai_vision_max_images` | `4` | 单次最多送图张数（1–8） |
+| `ai_vision_target_images` | `true` | 读取被举报/候选消息图片 |
+| `ai_vision_context_images` | `true` | 读取上下文图片 |
+| `ai_vision_detect_violation` | `true` | 识别违规图片 |
+| `ai_vision_detect_qr` | `true` | 识别二维码/小程序码 |
+| `ai_vision_detect_diversion` | `true` | 识别引流图 |
+| `ai_vision_read_screenshots` | `true` | 读取聊天记录截图 |
+| `ai_vision_extra_prompt` | 空 | 追加图片检查要求 |
 
 ### 默认群配置（可被分群覆盖）
 
@@ -353,7 +390,9 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 `daily_limit`、`notify_admin_when_safe`、`announce_safe_in_group`、`auto_include_group_admins`、
 `reply_content`、`warn_template`、`safe_group_template`、
 `context_enabled`、`context_before_count`、`context_after_count`、`banter_guard`、
-`evidence_admin_ids`、`evidence_required`、`not_admin_evidence_only`、`notify_include_context`、`forward_context_records`、`notify_admin_on_suspected_malicious`、
+`ai_vision_enabled`、`ai_vision_max_images`、`ai_vision_target_images`、`ai_vision_context_images`、
+`ai_vision_detect_violation`、`ai_vision_detect_qr`、`ai_vision_detect_diversion`、`ai_vision_read_screenshots`、`ai_vision_extra_prompt`、
+`evidence_admin_ids`、`evidence_required`、`not_admin_evidence_only`、`notify_include_context`、`forward_context_records`、`notify_admin_on_suspected_malicious`,、
 `auto_review_enabled`、`auto_review_message_threshold`、`auto_review_interval_minutes`、
 `auto_review_scope_count`、`auto_review_scope_minutes`、`auto_review_notify_mode`、`auto_review_max_actions`、
 `auto_review_state_max_groups`、`auto_review_pending_cap`
@@ -364,6 +403,15 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `context_before_count` | number | 上下文回溯条数（0–60） |
 | `context_after_count` | number | 被举报消息之后的条数（0–30） |
 | `banter_guard` | bool | 该群是否启用玩笑豁免 |
+| `ai_vision_enabled` | bool | 该群是否启用图片理解 |
+| `ai_vision_max_images` | number | 单次最多送图张数 |
+| `ai_vision_target_images` | bool | 读取目标消息图片 |
+| `ai_vision_context_images` | bool | 读取上下文图片 |
+| `ai_vision_detect_violation` | bool | 识别违规图片 |
+| `ai_vision_detect_qr` | bool | 识别二维码 |
+| `ai_vision_detect_diversion` | bool | 识别引流图 |
+| `ai_vision_read_screenshots` | bool | 读取聊天记录截图 |
+| `ai_vision_extra_prompt` | text | 图片检查补充要求 |
 | `evidence_admin_ids` | list | 该群的证据接收 QQ |
 | `evidence_required` | bool | 该群证据未送达是否跳过处罚 |
 | `not_admin_evidence_only` | bool | 该群机器人不是管理员时是否只留证转发 |

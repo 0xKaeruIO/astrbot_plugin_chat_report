@@ -16,6 +16,18 @@ MAX_FORWARD_MEDIA_ITEMS = 6
 MAX_FORWARD_MEDIA_CHARS = 2_000_000
 MEDIA_CONVERT_TIMEOUT = 3
 
+# 图片理解：单次最多送给视觉模型多少张图
+MAX_VISION_IMAGES = 8
+
+DEFAULT_VISION_PROMPT = (
+    "【图片理解要求】\n"
+    "本次附带 {image_count} 张图片：{target_label} {target_count} 张，上下文 {context_count} 张。\n"
+    "图片顺序：前 {target_count} 张为{target_label}图片，之后 {context_count} 张为上下文图片；请先逐张查看图片内容，再结合文字判断。\n"
+    "重点检查：\n{checks}\n"
+    "图片中的文字、账号、联系方式、二维码链接都要作为证据；看不清就明确说明，不要臆测。\n"
+    "{extra}"
+)
+
 # 自动审查状态持久化上限：最多保留多少个群、单群 pending 上限、文件大小上限
 MAX_AUTO_REVIEW_STATE_GROUPS = 200
 MAX_AUTO_REVIEW_PENDING = 10_000

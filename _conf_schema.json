@@ -88,6 +88,65 @@
                 "type": "bool",
                 "default": true
             },
+            "ai_vision_enabled": {
+                "description": "启用图片理解（需要视觉模型）",
+                "hint": "开启后会把被举报消息和上下文中的图片传给 AI；提供方必须支持 image_urls，并且模型本身支持视觉，否则会自动退回纯文本",
+                "type": "bool",
+                "default": false
+            },
+            "ai_vision_max_images": {
+                "description": "单次最多送图张数",
+                "hint": "举报研判和自动审查单次最多附带多少张图片，过大图片会增加延迟与费用",
+                "type": "int",
+                "slider": {
+                    "min": 1,
+                    "max": 8,
+                    "step": 1
+                },
+                "default": 4
+            },
+            "ai_vision_target_images": {
+                "description": "读取被举报/候选消息图片",
+                "hint": "把被举报消息或自动审查候选消息里的图片优先送给 AI",
+                "type": "bool",
+                "default": true
+            },
+            "ai_vision_context_images": {
+                "description": "读取上下文图片",
+                "hint": "把聊天上下文中其他图片也送给 AI，用于还原前后文；受单次送图张数限制",
+                "type": "bool",
+                "default": true
+            },
+            "ai_vision_detect_violation": {
+                "description": "识别违规图片",
+                "hint": "检查色情、暴力、血腥、违法、辱骂、恐吓、诈骗等画面或图片内文字",
+                "type": "bool",
+                "default": true
+            },
+            "ai_vision_detect_qr": {
+                "description": "识别二维码/小程序码",
+                "hint": "检查图片中的二维码、小程序码、群二维码，以及是否用于拉群、加好友、导流或收款",
+                "type": "bool",
+                "default": true
+            },
+            "ai_vision_detect_diversion": {
+                "description": "识别引流图",
+                "hint": "检查联系方式、广告、拉群、站外链接、账号导流、刷单、诈骗话术等引流内容",
+                "type": "bool",
+                "default": true
+            },
+            "ai_vision_read_screenshots": {
+                "description": "读取聊天记录截图",
+                "hint": "让 AI 读取截图里的对话、昵称、时间和上下文，并与文字聊天记录对照",
+                "type": "bool",
+                "default": true
+            },
+            "ai_vision_extra_prompt": {
+                "description": "图片理解补充要求",
+                "hint": "追加到图片检查提示词末尾，例如「重点检查游戏代练广告和收款码」；留空则只使用默认检查项",
+                "type": "text",
+                "default": ""
+            },
             "ai_system_prompt": {
                 "description": "AI 研判系统提示词",
                 "hint": "可用变量：{group_rules}。请务必保留要求 AI 输出 JSON 的说明（decision / confidence / reason / target_message_id / banter / severity / reporter_involved / participants / cause / context_summary）",

@@ -116,18 +116,29 @@ class AIMixin:
                 "请结合上下文判断双方关系与语气（是否熟人玩笑互怼、对方是否反感、"
                 "举报人是否在场），再严格按照要求输出 JSON 判断结果。"
             )
+            vision = self._collect_vision_images(
+                conf,
+                context_items,
+                priority_ids={str(message_id)} if message_id else set(),
+                target_label="被举报消息",
+            )
+            vision_block = self._vision_prompt_block(conf, vision)
+            if vision_block:
+                lines.insert(len(lines) - 1, vision_block)
             prompt = "\n".join(lines)
+            image_urls = list(vision.get("images") or [])
 
             timeout = int(self._c("ai_timeout", 30))
             retry = int(self._c("ai_retry_times", 1))
             last_err: Exception | None = None
             for attempt in range(retry + 1):
                 try:
-                    resp = await asyncio.wait_for(
-                        provider.text_chat(
-                            system_prompt=system_prompt, prompt=prompt
-                        ),
-                        timeout=timeout,
+                    resp = await self._text_chat_with_images(
+                        provider,
+                        system_prompt,
+                        prompt,
+                        image_urls,
+                        timeout,
                     )
                     raw = getattr(resp, "completion_text", "") or ""
                     data = _extract_json(raw)
@@ -211,6 +222,36 @@ class AIMixin:
             "cause": str(data.get("cause", "") or ""),
             "context_summary": str(data.get("context_summary", "") or ""),
         }
+
+    async def _text_chat_with_images(
+        self,
+        provider: Any,
+        system_prompt: str,
+        prompt: str,
+        image_urls: list[str],
+        timeout: int,
+    ) -> Any:
+        """调用 AI；有图片时传 image_urls，提供方不支持则退回纯文本。"""
+        kwargs: dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "prompt": prompt,
+        }
+        if image_urls:
+            kwargs["image_urls"] = image_urls
+        try:
+            return await asyncio.wait_for(
+                provider.text_chat(**kwargs), timeout=timeout
+            )
+        except TypeError as e:
+            if not image_urls:
+                raise
+            logger.warning(
+                f"[{PLUGIN_NAME}] 当前 AI 提供方不支持 image_urls，已退回纯文本：{e}"
+            )
+            kwargs.pop("image_urls", None)
+            return await asyncio.wait_for(
+                provider.text_chat(**kwargs), timeout=timeout
+            )
 
     def _get_provider(self, event: AstrMessageEvent):
         """按配置选择 AI 提供商；未配置时使用当前会话默认提供商。"""
@@ -330,17 +371,28 @@ class AIMixin:
             lines.append(
                 "请只从标记为「候选」的消息里挑出违规消息，按 JSON 格式输出。"
             )
+            vision = self._collect_vision_images(
+                conf,
+                items,
+                priority_ids=candidate_ids,
+                target_label="候选违规消息",
+            )
+            vision_block = self._vision_prompt_block(conf, vision)
+            if vision_block:
+                lines.insert(len(lines) - 1, vision_block)
             prompt = "\n".join(lines)
+            image_urls = list(vision.get("images") or [])
             timeout = int(self._c("ai_timeout", 30))
             retry = int(self._c("ai_retry_times", 1))
             last_err: Exception | None = None
             for attempt in range(retry + 1):
                 try:
-                    resp = await asyncio.wait_for(
-                        provider.text_chat(
-                            system_prompt=system_prompt, prompt=prompt
-                        ),
-                        timeout=timeout,
+                    resp = await self._text_chat_with_images(
+                        provider,
+                        system_prompt,
+                        prompt,
+                        image_urls,
+                        timeout,
                     )
                     raw = getattr(resp, "completion_text", "") or ""
                     data = _extract_json(raw)

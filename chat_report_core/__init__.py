@@ -8,6 +8,7 @@ from .evidence import EvidenceMixin
 from .notify import NotifyMixin
 from .report import ReportMixin
 from .state import StateMixin
+from .vision import VisionMixin
 
 __all__ = [
     "AIMixin",
@@ -18,4 +19,5 @@ __all__ = [
     "NotifyMixin",
     "ReportMixin",
     "StateMixin",
+    "VisionMixin",
 ]

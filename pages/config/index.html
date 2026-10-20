@@ -353,6 +353,28 @@
             hint: "AI 判定为双方玩笑互动时，即使消息含辱骂词也不处罚（AI 判定严重程度为 high 时仍照常处理）" }
         ]
       }, {
+        title: "图片理解", desc: "需要视觉模型；仅开启后才会把图片传给 AI，提供方不支持 image_urls 时自动退回纯文本",
+        fields: [
+          { key: "ai_vision_enabled", label: "启用图片理解", type: "bool",
+            hint: "开启后把图片传给视觉模型；模型或提供方不支持时会退回纯文本，不影响文字研判" },
+          { key: "ai_vision_max_images", label: "单次最多送图", type: "number", min: 1, max: 8, step: 1, unit: "张",
+            hint: "举报研判和自动审查单次最多附带多少张图片" },
+          { key: "ai_vision_target_images", label: "读取被举报/候选消息图片", type: "bool",
+            hint: "优先送被举报消息或自动审查候选消息里的图片" },
+          { key: "ai_vision_context_images", label: "读取上下文图片", type: "bool",
+            hint: "把聊天上下文中其他图片也送给 AI，用于还原前后文" },
+          { key: "ai_vision_detect_violation", label: "识别违规图片", type: "bool",
+            hint: "检查色情、暴力、血腥、违法、辱骂、恐吓、诈骗等画面或图片内文字" },
+          { key: "ai_vision_detect_qr", label: "识别二维码", type: "bool",
+            hint: "检查二维码、小程序码、群二维码，以及是否用于拉群、加好友、导流或收款" },
+          { key: "ai_vision_detect_diversion", label: "识别引流图", type: "bool",
+            hint: "检查联系方式、广告、拉群、站外链接、账号导流、刷单、诈骗话术" },
+          { key: "ai_vision_read_screenshots", label: "读取聊天记录截图", type: "bool",
+            hint: "读取截图中的对话、昵称、时间和上下文，并与文字记录对照" },
+          { key: "ai_vision_extra_prompt", label: "图片理解补充要求", type: "textarea", rows: 3,
+            hint: "追加到图片检查提示词末尾，例如「重点检查游戏代练广告和收款码」；留空使用默认检查项" }
+        ]
+      }, {
         title: "研判提示词", desc: "告诉 AI 判断标准，务必保留输出 JSON 的要求",
         fields: [
           { key: "ai_system_prompt", label: "举报研判提示词", type: "textarea", rows: 11, vars: ["group_rules"],
@@ -531,6 +553,14 @@
     { key: "context_before_count", label: "上下文回溯条数", type: "number", min: 0, max: 60, step: 1, unit: "条" },
     { key: "context_after_count", label: "之后条数", type: "number", min: 0, max: 30, step: 1, unit: "条" },
     { key: "banter_guard", label: "玩笑豁免", type: "bool" },
+    { key: "ai_vision_enabled", label: "启用图片理解", type: "bool" },
+    { key: "ai_vision_max_images", label: "单次最多送图", type: "number", min: 1, max: 8, step: 1, unit: "张" },
+    { key: "ai_vision_target_images", label: "读取目标图片", type: "bool" },
+    { key: "ai_vision_context_images", label: "读取上下文图片", type: "bool" },
+    { key: "ai_vision_detect_violation", label: "识别违规图片", type: "bool" },
+    { key: "ai_vision_detect_qr", label: "识别二维码", type: "bool" },
+    { key: "ai_vision_detect_diversion", label: "识别引流图", type: "bool" },
+    { key: "ai_vision_read_screenshots", label: "读取聊天截图", type: "bool" },
     { key: "evidence_admin_ids", label: "指定管理员 / 群主 QQ", type: "list", rows: 3 },
     { key: "evidence_required", label: "证据未送达不处罚", type: "bool" },
     { key: "not_admin_evidence_only", label: "非管理员只留证", type: "bool" },

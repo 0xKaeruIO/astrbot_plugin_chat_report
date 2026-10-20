@@ -212,12 +212,18 @@ class ReportMixin:
         }
 
         # 8. AI 研判（带上上下文）
-        if is_reply and not has_text:
-            # 引用非文本消息（图片/语音/文件），交给人工
+        target_vision = self._collect_vision_images(
+            conf,
+            context_items,
+            priority_ids={message_id} if message_id else set(),
+            target_label="被举报消息",
+        )
+        if is_reply and not has_text and not target_vision.get("images"):
+            # 引用非文本消息，且没有可交给视觉模型的图片，交给人工
             judgement = {
                 "decision": "uncertain",
                 "confidence": 0.0,
-                "reason": "被举报消息为非文本内容，无法自动分析",
+                "reason": "被举报消息为非文本内容，未启用图片理解或没有可读取图片",
                 "target_message_id": "",
                 "banter": False,
                 "severity": "none",

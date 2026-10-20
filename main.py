@@ -27,6 +27,7 @@ from .chat_report_core import (
     NotifyMixin,
     ReportMixin,
     StateMixin,
+    VisionMixin,
     constants,
 )
 from .chat_report_core.constants import (
@@ -41,13 +42,14 @@ from .chat_report_core.utils import _render
     "astrbot_plugin_chat_report",
     "yosers",
     "聊天消息举报：结合上下文研判，证据先私聊转发指定管理员再撤回禁言，拿不准转人工处理，支持按群自动审查",
-    "1.0.2",
+    "1.0.3",
 )
 class ChatReportPlugin(
     ConfigMixin,
     StateMixin,
     ContextMixin,
     AIMixin,
+    VisionMixin,
     EvidenceMixin,
     NotifyMixin,
     ReportMixin,

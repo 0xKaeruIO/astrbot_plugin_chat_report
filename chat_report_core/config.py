@@ -119,6 +119,28 @@ class ConfigMixin:
             "context_fetch_history": bool(self._c("context_fetch_history", True)),
             "context_max_chars": int(self._c("context_max_chars", 3000)),
             "banter_guard": bool(self._c("banter_guard", True)),
+            # 图片理解（需要视觉模型）
+            "ai_vision_enabled": bool(self._c("ai_vision_enabled", False)),
+            "ai_vision_max_images": int(self._c("ai_vision_max_images", 4)),
+            "ai_vision_target_images": bool(
+                self._c("ai_vision_target_images", True)
+            ),
+            "ai_vision_context_images": bool(
+                self._c("ai_vision_context_images", True)
+            ),
+            "ai_vision_detect_violation": bool(
+                self._c("ai_vision_detect_violation", True)
+            ),
+            "ai_vision_detect_qr": bool(self._c("ai_vision_detect_qr", True)),
+            "ai_vision_detect_diversion": bool(
+                self._c("ai_vision_detect_diversion", True)
+            ),
+            "ai_vision_read_screenshots": bool(
+                self._c("ai_vision_read_screenshots", True)
+            ),
+            "ai_vision_extra_prompt": str(
+                self._c("ai_vision_extra_prompt", "") or ""
+            ),
             # 证据留存
             "evidence_admin_ids": list(self._c("evidence_admin_ids", []) or []),
             "evidence_required": bool(self._c("evidence_required", True)),
