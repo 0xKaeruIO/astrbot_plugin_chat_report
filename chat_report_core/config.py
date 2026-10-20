@@ -205,6 +205,9 @@ class ConfigMixin:
             "auto_review_max_actions": int(
                 self._c("auto_review_max_actions", 3)
             ),
+            "auto_review_notify_dedup_minutes": int(
+                self._c("auto_review_notify_dedup_minutes", 60)
+            ),
             "auto_review_state_max_groups": int(
                 self._c("auto_review_state_max_groups", MAX_AUTO_REVIEW_STATE_GROUPS)
             ),

@@ -43,7 +43,7 @@ from .chat_report_core.utils import _render
     "astrbot_plugin_chat_report",
     "yosers",
     "聊天消息举报：结合上下文研判，证据先私聊转发指定管理员再撤回禁言，拿不准转人工处理，支持按群自动审查",
-    "1.0.6",
+    "1.0.7",
 )
 class ChatReportPlugin(
     ConfigMixin,
@@ -96,6 +96,8 @@ class ChatReportPlugin(
         self._auto_review_state: dict[str, dict[str, Any]] = {}
         self._auto_review_running: set[str] = set()
         self._auto_review_dirty = False
+        # 已发送过违规通知的消息 ID -> 时间戳，TTL 内不重复标记/通知
+        self._auto_review_notified: dict[str, float] = {}
         # 每个群最近一次事件，供定时自动审查在群安静时也能触发
         self._last_events: dict[str, Any] = {}
         self._auto_review_task: asyncio.Task | None = None

@@ -35,6 +35,51 @@ from .utils import (
 class AutoReviewMixin:
     """按群自动审查：触发条件、批量审查、处理与三种通知模式。"""
 
+    def _violation_notice_ttl(self, conf: dict[str, Any]) -> int:
+        """返回违规消息通知去重 TTL（秒），限制在 1 分钟到 24 小时。"""
+        try:
+            minutes = int(conf.get("auto_review_notify_dedup_minutes", 60))
+        except Exception:
+            minutes = 60
+        return max(60, min(86400, minutes * 60))
+
+    def _prune_violation_notices(self, conf: dict[str, Any]) -> None:
+        """清理过期通知记录，并限制内存中最多保留 1000 条。"""
+        ttl = self._violation_notice_ttl(conf)
+        now = time.time()
+        self._auto_review_notified = {
+            str(mid): ts
+            for mid, ts in self._auto_review_notified.items()
+            if now - float(ts) < ttl
+        }
+        if len(self._auto_review_notified) > 1000:
+            newest = sorted(
+                self._auto_review_notified.items(),
+                key=lambda kv: float(kv[1]),
+                reverse=True,
+            )[:1000]
+            self._auto_review_notified = dict(newest)
+
+    def _was_violation_notified(
+        self, message_id: str, conf: dict[str, Any]
+    ) -> bool:
+        """判断该消息是否已在 TTL 内发过违规通知。"""
+        mid = str(message_id or "").strip()
+        if not mid:
+            return True
+        self._prune_violation_notices(conf)
+        return mid in self._auto_review_notified
+
+    def _mark_violation_notified(
+        self, message_id: str, conf: dict[str, Any]
+    ) -> None:
+        """记录已通知的违规消息 ID，供 TTL 内去重。"""
+        mid = str(message_id or "").strip()
+        if not mid:
+            return
+        self._auto_review_notified[mid] = time.time()
+        self._prune_violation_notices(conf)
+
     async def _auto_review_loop(self) -> None:
         """定时检查：群安静时也能按「时间间隔」触发自动审查。"""
         while True:
@@ -183,7 +228,15 @@ class AutoReviewMixin:
             )
             return
 
-        findings = review.get("findings") or []
+        raw_findings = list(review.get("findings") or [])
+        findings = [
+            finding
+            for finding in raw_findings
+            if not self._was_violation_notified(
+                str(finding.get("message_id") or ""), conf
+            )
+        ]
+        deduped_all = bool(raw_findings) and not findings
         threshold = float(self._c("ai_confidence_threshold", 0.7))
         banter_guard = bool(conf.get("banter_guard", True))
         rank = {"high": 3, "medium": 2, "low": 1, "none": 0}
@@ -273,6 +326,9 @@ class AutoReviewMixin:
             should_notify = bool(actions) or bool(errors)
         else:
             should_notify = bool(findings)
+        if deduped_all and not actions and not errors:
+            # 本轮识别到的违规消息此前已通知过，且没有新的处理动作
+            should_notify = False
         notified: list[str] = []
         if should_notify:
             notified = await self._send_auto_review_notice(
@@ -285,6 +341,11 @@ class AutoReviewMixin:
                 action_plan,
                 review,
             )
+        if notified or actions:
+            for finding in findings:
+                self._mark_violation_notified(
+                    str(finding.get("message_id") or ""), conf
+                )
 
         state["last_mid"] = str(items[-1].get("message_id") or "")
         state["last_ts"] = int(items[-1].get("time") or 0)

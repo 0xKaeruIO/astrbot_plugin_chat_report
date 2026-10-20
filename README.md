@@ -186,7 +186,7 @@ AI 输出 JSON：`decision` / `confidence` / `reason` / `target_message_id`，�
 2. `safe_silent`：安全则不通知（默认）；
 3. `after_action`：仅处理后保留证据并通知（没处理就不发）。
 
-自动审查只发一条 QQ「聊天记录」合并转发，通知内容放在首条摘要节点，不再额外发一条纯文本；被判定违规的消息会在对应节点前标记「【违规·高/中/低】原因」，处理违规时仍按「先证据、后撤回/禁言」执行。
+自动审查只发一条 QQ「聊天记录」合并转发，通知内容放在首条摘要节点，不再额外发一条纯文本；被判定违规的消息会在对应节点前标记「【违规·高/中/低】原因」，处理违规时仍按「先证据、后撤回/禁言」执行。同一消息 ID 在 `auto_review_notify_dedup_minutes` 内只标记/通知一次，避免反复提醒。
 
 自动审查状态会写入 `auto_review_state.json`，保存每群的 `pending`、上次审查时间与上次审查到的消息位置，重启后继续累计，避免重复审查。状态受三重上限保护：`auto_review_state_max_groups`（默认 200 个群）、`auto_review_pending_cap`（默认单群 10000 条）、文件总大小 512KB；超限时优先淘汰最久未活动的群。
 
@@ -337,6 +337,7 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `auto_review_scope_minutes` | 60 | 只读取最近多少分钟内的消息；0 = 不限 |
 | `auto_review_notify_mode` | `safe_silent` | `always` 无论是否安全都通知；`safe_silent` 安全则不通知；`after_action` 仅处理后保留证据并通知 |
 | `auto_review_max_actions` | 3 | 单轮最多自动撤回/禁言多少条违规消息；0 = 只通知不处理 |
+| `auto_review_notify_dedup_minutes` | 60 | 同一违规消息 ID 在该时间内只标记/通知一次 |
 | `auto_review_state_max_groups` | 200 | 自动审查状态最多保留多少个最近活跃的群 |
 | `auto_review_pending_cap` | 10000 | 单群累计等待审查的消息条数上限 |
 
@@ -435,7 +436,7 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 `conflict_min_new_messages`、`conflict_cooldown_minutes`、`conflict_min_severity`、`conflict_notify_admin`、`conflict_mediate`、`conflict_extra_prompt`、
 `evidence_admin_ids`、`evidence_required`、`not_admin_evidence_only`、`notify_include_context`、`forward_context_records`、`notify_admin_on_suspected_malicious`,、
 `auto_review_enabled`、`auto_review_message_threshold`、`auto_review_interval_minutes`、
-`auto_review_scope_count`、`auto_review_scope_minutes`、`auto_review_notify_mode`、`auto_review_max_actions`、
+`auto_review_scope_count`、`auto_review_scope_minutes`、`auto_review_notify_mode`、`auto_review_max_actions`、`auto_review_notify_dedup_minutes`、
 `auto_review_state_max_groups`、`auto_review_pending_cap`
 
 | 新增可覆盖字段 | 类型 | 说明 |
@@ -476,6 +477,7 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `auto_review_scope_minutes` | number | 该群审查时间范围（分钟） |
 | `auto_review_notify_mode` | string | 该群审查通知模式 |
 | `auto_review_max_actions` | number | 该群单轮最多处理条数 |
+| `auto_review_notify_dedup_minutes` | number | 该群违规通知去重时长 |
 | `auto_review_state_max_groups` | number | 状态最多保留群数 |
 | `auto_review_pending_cap` | number | 单群 pending 上限 |
 

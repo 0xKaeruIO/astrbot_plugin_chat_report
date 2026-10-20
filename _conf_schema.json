@@ -280,6 +280,17 @@
                 },
                 "default": 3
             },
+            "auto_review_notify_dedup_minutes": {
+                "description": "违规通知去重时长(分钟)",
+                "hint": "同一消息 ID 在该时间内只标记/通知一次；0 或过小会导致反复通知，建议 60",
+                "type": "int",
+                "slider": {
+                    "min": 1,
+                    "max": 1440,
+                    "step": 5
+                },
+                "default": 60
+            },
             "auto_review_state_max_groups": {
                 "description": "自动审查状态最多保留群数",
                 "hint": "持久化 auto_review_state.json 时最多保留多少个最近活跃的群；超出按最近审查时间淘汰",
