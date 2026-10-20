@@ -65,7 +65,7 @@ B 全程接梗、还自己笑，上下文说明这是**双方玩笑互动**，�
 1. AI 判定违规且可处理 → **先**把违规发言、发生时间、参与人员、AI 结论与整段上下文，
    打包成 QQ「聊天记录」**合并转发**私聊给 `evidence_admin_ids` 里的指定管理员：
    1 条摘要节点 + 每条上下文消息各 1 条节点（带发送者昵称、QQ，被举报消息标注「被举报」；
-   图片 / 语音等非文本消息以 `[图片]`、`[语音]` 占位保留）。
+   图片 / 语音会尝试以 base64 恢复原始媒体（单次最多 6 个、约 2MB），超限或转换失败时以 `[图片]`、`[语音]` 占位保留）。
    `evidence_use_forward` 关闭时证据退回纯文本；通知是否额外附带独立聊天记录由 `forward_context_records` 控制。
 2. 同时在插件数据目录落盘 `evidence/<举报ID>.json`（含完整上下文），`evidence_keep_files` 开启时长期留存。
 3. **证据送达后**才撤回 + 群内艾特警告 + 禁言 + 警告次数 +1。
@@ -160,9 +160,11 @@ AI 输出 JSON：`decision` / `confidence` / `reason` / `target_message_id`，�
 
 自动审查通知同样先发通知文本，再单独发一条聊天记录作为证据存档；处理违规时仍按「先证据、后撤回/禁言」执行。
 
+自动审查状态会写入 `auto_review_state.json`，保存每群的 `pending`、上次审查时间与上次审查到的消息位置，重启后继续累计，避免重复审查。状态受三重上限保护：`auto_review_state_max_groups`（默认 200 个群）、`auto_review_pending_cap`（默认单群 10000 条）、文件总大小 512KB；超限时优先淘汰最久未活动的群。
+
 ### 防封号
 
-默认情况下，转人工 / 安全通知会把上下文打包成 QQ「聊天记录」合并转发（这是本插件的核心改进：管理员必须能看到前因后果才判得准）。
+默认情况下，转人工 / 安全通知会在正文附带上下文，并在之后单独发一条 QQ「聊天记录」合并转发作为证据存档（这是本插件的核心改进：管理员必须能看到前因后果才判得准）。
 如果担心机器人因转发敏感内容被风控，可在行为开关里关闭 `notify_include_context`：
 关闭后通知里不再附带聊天原文或合并转发，只剩发生时间、参与人员、AI 结论与事情起因
 （证据转发 `evidence_template` 不受此开关影响，仍按模板私聊转发并保留聊天记录）。
@@ -275,6 +277,8 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `auto_review_scope_minutes` | 60 | 只读取最近多少分钟内的消息；0 = 不限 |
 | `auto_review_notify_mode` | `safe_silent` | `always` 无论是否安全都通知；`safe_silent` 安全则不通知；`after_action` 仅处理后保留证据并通知 |
 | `auto_review_max_actions` | 3 | 单轮最多自动撤回/禁言多少条违规消息；0 = 只通知不处理 |
+| `auto_review_state_max_groups` | 200 | 自动审查状态最多保留多少个最近活跃的群 |
+| `auto_review_pending_cap` | 10000 | 单群累计等待审查的消息条数上限 |
 
 ### 行为开关
 
@@ -351,7 +355,8 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 `context_enabled`、`context_before_count`、`context_after_count`、`banter_guard`、
 `evidence_admin_ids`、`evidence_required`、`not_admin_evidence_only`、`notify_include_context`、`forward_context_records`、`notify_admin_on_suspected_malicious`、
 `auto_review_enabled`、`auto_review_message_threshold`、`auto_review_interval_minutes`、
-`auto_review_scope_count`、`auto_review_scope_minutes`、`auto_review_notify_mode`、`auto_review_max_actions`
+`auto_review_scope_count`、`auto_review_scope_minutes`、`auto_review_notify_mode`、`auto_review_max_actions`、
+`auto_review_state_max_groups`、`auto_review_pending_cap`
 
 | 新增可覆盖字段 | 类型 | 说明 |
 |:---|:---:|:---|
@@ -372,6 +377,8 @@ cp -r astrbot_plugin_chat_report /AstrBot/data/plugins/
 | `auto_review_scope_minutes` | number | 该群审查时间范围（分钟） |
 | `auto_review_notify_mode` | string | 该群审查通知模式 |
 | `auto_review_max_actions` | number | 该群单轮最多处理条数 |
+| `auto_review_state_max_groups` | number | 状态最多保留群数 |
+| `auto_review_pending_cap` | number | 单群 pending 上限 |
 
 JSON 示例：
 
@@ -393,7 +400,9 @@ JSON 示例：
     "auto_review_scope_count": 50,
     "auto_review_scope_minutes": 60,
     "auto_review_notify_mode": "safe_silent",
-    "auto_review_max_actions": 3
+    "auto_review_max_actions": 3,
+    "auto_review_state_max_groups": 200,
+    "auto_review_pending_cap": 10000
   }
 }
 ```
@@ -405,6 +414,7 @@ JSON 示例：
 运行数据保存在 AstrBot 插件数据目录：`data/plugin_data/astrbot_plugin_chat_report/`
 
 - `counters.json`：被举报次数、警告次数统计
+- `auto_review_state.json`：自动审查状态（pending / 上次审查时间 / 上次审查消息位置），受群数、pending、文件大小上限约束
 - `reports.json`：待处理举报
 - `audit.jsonl`：审计日志（谁举报、谁被举报、AI 判断、是否处理、处理人；机器人非管理员时记 `evidence_only`；自动审查记 `auto_review` / `auto_review_notified`）
 - `evidence/`：证据留存目录，每次自动处理前写入 `evidence/<举报ID>.json`，

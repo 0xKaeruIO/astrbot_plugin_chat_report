@@ -16,7 +16,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.config.astrbot_config import AstrBotConfig
-from astrbot.core.message.components import At, Plain, Reply
+from astrbot.core.message.components import At, Image, Plain, Record, Reply
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -24,8 +24,12 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
 from .constants import (
     PLUGIN_NAME,
     MAX_FORWARD_NODES,
+    MAX_FORWARD_MEDIA_ITEMS,
+    MAX_FORWARD_MEDIA_CHARS,
+    MEDIA_CONVERT_TIMEOUT,
     DEFAULT_WARN_TEMPLATE,
     DEFAULT_EVIDENCE_TEMPLATE,
+    _SEG_LABELS,
 )
 
 from .utils import (
@@ -136,7 +140,7 @@ class EvidenceMixin:
         except Exception:
             return ""
 
-    def _build_forward_nodes(
+    async def _build_forward_nodes(
         self,
         context_items: list[dict[str, Any]],
         *,
@@ -146,8 +150,13 @@ class EvidenceMixin:
     ) -> list[dict[str, Any]]:
         """构造 QQ「聊天记录」合并转发节点：1 条摘要 + 每条上下文消息 1 条。
 
+        含图片/语音的消息会把原始媒体转换成 base64 放入节点；受
+        MAX_FORWARD_MEDIA_ITEMS / MAX_FORWARD_MEDIA_CHARS 限制，超限或转换失败时
+        退回 [图片]/[语音] 占位文本。
+
         Args:
-            context_items: 上下文条目（含 text/sender_id/sender_name/is_target）。
+            context_items: 上下文条目（含 text/sender_id/sender_name/is_target，
+                可能含 components/raw_segments）。
             title: 摘要节点标题，例如「举报证据-xxx」「自动审查-xxx」。
             summary_text: 摘要正文。
             self_id: 机器人 QQ，用作摘要节点 uin；缺失时用 0。
@@ -172,12 +181,18 @@ class EvidenceMixin:
             }
         ]
         items = list(context_items or [])[-(MAX_FORWARD_NODES - 1):]
+        media_budget = {
+            "items": MAX_FORWARD_MEDIA_ITEMS,
+            "chars": MAX_FORWARD_MEDIA_CHARS,
+        }
         for item in items:
-            text = str(item.get("text") or "").strip()
-            if not text:
+            content = await self._forward_item_content(item, media_budget)
+            if not content:
                 continue
             if item.get("is_target"):
-                text = "【被举报】" + text
+                content.insert(
+                    0, {"type": "text", "data": {"text": "【被举报】"}}
+                )
             sender_id = str(item.get("sender_id") or "")
             name = str(item.get("sender_name") or sender_id or "群成员")
             nodes.append(
@@ -190,11 +205,122 @@ class EvidenceMixin:
                         if sender_id.isdigit()
                         else default_uin,
                         "user_id": sender_id or default_user,
-                        "content": [{"type": "text", "data": {"text": text}}],
+                        "content": content,
                     },
                 }
             )
         return nodes
+
+    async def _forward_item_content(
+        self, item: dict[str, Any], media_budget: dict[str, int]
+    ) -> list[dict[str, Any]]:
+        """把一条缓存消息转成合并转发节点内容，尽量保留原始图片/语音。"""
+        components = item.get("components") or []
+        raw_segments = item.get("raw_segments") or []
+        parts: list[dict[str, Any]] = []
+        if components:
+            for comp in components:
+                if isinstance(comp, Plain):
+                    text = str(getattr(comp, "text", "") or "")
+                    if text:
+                        parts.append({"type": "text", "data": {"text": text}})
+                elif isinstance(comp, At):
+                    qq = str(getattr(comp, "qq", "") or "")
+                    label = "@全体成员" if qq == "all" else f"@{getattr(comp, 'name', '') or qq}"
+                    parts.append({"type": "text", "data": {"text": label}})
+                elif isinstance(comp, Reply):
+                    continue
+                elif isinstance(comp, (Image, Record)):
+                    parts.append(
+                        await self._media_forward_segment(comp, media_budget)
+                    )
+                else:
+                    label = _SEG_LABELS.get(self._seg_key(comp), "[消息]")
+                    parts.append({"type": "text", "data": {"text": label}})
+        elif raw_segments:
+            for seg in raw_segments:
+                if not isinstance(seg, dict):
+                    continue
+                seg_type = str(seg.get("type") or "")
+                data = seg.get("data") if isinstance(seg.get("data"), dict) else {}
+                if seg_type == "text":
+                    text = str(data.get("text") or "")
+                    if text:
+                        parts.append({"type": "text", "data": {"text": text}})
+                elif seg_type == "at":
+                    qq = str(data.get("qq") or "")
+                    label = "@全体成员" if qq == "all" else f"@{data.get('name') or qq}"
+                    parts.append({"type": "text", "data": {"text": label}})
+                elif seg_type == "reply":
+                    continue
+                elif seg_type in ("image", "record"):
+                    source = (
+                        data.get("url") or data.get("file") or data.get("path") or ""
+                    )
+                    if source:
+                        comp = (
+                            Image(file=str(source))
+                            if seg_type == "image"
+                            else Record(file=str(source))
+                        )
+                        parts.append(
+                            await self._media_forward_segment(comp, media_budget)
+                        )
+                    else:
+                        parts.append(
+                            {
+                                "type": "text",
+                                "data": {
+                                    "text": "[图片]" if seg_type == "image" else "[语音]"
+                                },
+                            }
+                        )
+                else:
+                    parts.append(
+                        {
+                            "type": "text",
+                            "data": {"text": _SEG_LABELS.get(seg_type, "[消息]")},
+                        }
+                    )
+        else:
+            text = str(item.get("text") or "").strip()
+            if text:
+                parts.append({"type": "text", "data": {"text": text}})
+        if not parts:
+            text = str(item.get("text") or "").strip()
+            if text:
+                parts.append({"type": "text", "data": {"text": text}})
+        return parts
+
+    async def _media_forward_segment(
+        self, comp: Any, media_budget: dict[str, int]
+    ) -> dict[str, Any]:
+        """把一个 Image/Record 转成 base64 消息段；超限时退回 URL 或占位文本。"""
+        kind = "image" if isinstance(comp, Image) else "record"
+        label = "[图片]" if kind == "image" else "[语音]"
+        if media_budget["items"] <= 0:
+            return {"type": "text", "data": {"text": label}}
+        media_budget["items"] -= 1
+        b64 = ""
+        try:
+            b64 = await asyncio.wait_for(
+                comp.convert_to_base64(), timeout=MEDIA_CONVERT_TIMEOUT
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[{PLUGIN_NAME}] 合并转发媒体转换失败：{e}")
+        if b64 and len(b64) <= media_budget["chars"]:
+            media_budget["chars"] -= len(b64)
+            return {"type": kind, "data": {"file": f"base64://{b64}"}}
+        source = (
+            getattr(comp, "url", None)
+            or getattr(comp, "file", None)
+            or getattr(comp, "path", None)
+        )
+        if isinstance(source, str) and source.startswith(
+            ("http://", "https://", "file://")
+        ):
+            return {"type": kind, "data": {"file": source}}
+        return {"type": "text", "data": {"text": label}}
 
     async def _send_private_forward_nodes(
         self,
@@ -280,7 +406,7 @@ class EvidenceMixin:
         if context_items and bool(conf.get("evidence_use_forward", True)):
             summary_ctx = dict(ctx)
             summary_ctx["context_log"] = "（见本条聊天记录中的上下文消息）"
-            nodes = self._build_forward_nodes(
+            nodes = await self._build_forward_nodes(
                 context_items,
                 title=f"举报证据-{ctx.get('report_id', '')}",
                 summary_text=_render(tpl, summary_ctx),

@@ -137,7 +137,7 @@ class NotifyMixin:
                 include_context=False,
                 respect_toggle=respect_notify_context,
             )
-            nodes = self._build_forward_nodes(
+            nodes = await self._build_forward_nodes(
                 context_items,
                 title=f"{title_prefix}-{ctx.get('report_id', '')}",
                 summary_text=summary,

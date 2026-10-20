@@ -16,7 +16,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.config.astrbot_config import AstrBotConfig
-from astrbot.core.message.components import At, Plain, Reply
+from astrbot.core.message.components import At, Image, Plain, Record, Reply
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -69,6 +69,13 @@ class ContextMixin:
             "sender_id": str(sender_id),
             "sender_name": str(sender_name),
         }
+        # 只有含图片/语音的消息才保留原始消息段，供合并转发恢复媒体
+        try:
+            raw_chain = list(event.get_messages())
+        except Exception:
+            raw_chain = []
+        if any(isinstance(seg, (Image, Record)) for seg in raw_chain):
+            entry["components"] = raw_chain[:20]
         key = f"{group_id}:{sender_id}"
         queue = self._msg_cache.setdefault(key, deque(maxlen=MAX_CACHE_PER_USER))
         queue.append(dict(entry))
@@ -87,6 +94,7 @@ class ContextMixin:
             },
         )
         state["pending"] = int(state.get("pending", 0) or 0) + 1
+        self._auto_review_dirty = True
         # 保存最近事件，供定时审查在群安静时复用
         self._last_events[str(group_id)] = event
 
@@ -189,7 +197,7 @@ class ContextMixin:
             text = cls._raw_chain_to_text(message)
         else:
             text = str(raw.get("raw_message") or message or "").strip()
-        return {
+        entry = {
             "message_id": str(raw.get("message_id") or raw.get("id") or ""),
             "sender_id": sender_id,
             "sender_name": sender_name or sender_id,
@@ -197,6 +205,12 @@ class ContextMixin:
             "time": int(raw.get("time") or 0),
             "is_target": False,
         }
+        if isinstance(message, list) and any(
+            isinstance(seg, dict) and str(seg.get("type")) in ("image", "record")
+            for seg in message
+        ):
+            entry["raw_segments"] = message[:20]
+        return entry
 
     async def _fetch_group_history(
         self, event: AstrMessageEvent, group_id: str, count: int

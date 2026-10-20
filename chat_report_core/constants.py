@@ -11,6 +11,16 @@ MAX_GROUP_CACHE = 200
 # 合并转发聊天记录最多包含多少条消息（含摘要节点）
 MAX_FORWARD_NODES = 60
 
+# 合并转发中最多恢复多少个图片/语音，以及 base64 总量上限（约 2MB 文本）
+MAX_FORWARD_MEDIA_ITEMS = 6
+MAX_FORWARD_MEDIA_CHARS = 2_000_000
+MEDIA_CONVERT_TIMEOUT = 3
+
+# 自动审查状态持久化上限：最多保留多少个群、单群 pending 上限、文件大小上限
+MAX_AUTO_REVIEW_STATE_GROUPS = 200
+MAX_AUTO_REVIEW_PENDING = 10_000
+MAX_AUTO_REVIEW_STATE_BYTES = 512 * 1024
+
 DEFAULT_WARN_TEMPLATE = (
     "你发送的消息不合群规，警告第 {warn_count} 次。已禁言 {mute_duration}。"
 )

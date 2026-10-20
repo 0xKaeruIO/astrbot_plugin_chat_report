@@ -23,6 +23,9 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
 
 from .constants import (
     PLUGIN_NAME,
+    MAX_AUTO_REVIEW_PENDING,
+    MAX_AUTO_REVIEW_STATE_BYTES,
+    MAX_AUTO_REVIEW_STATE_GROUPS,
 )
 
 
@@ -92,6 +95,121 @@ class StateMixin:
             self._atomic_write(self.reports_file, {"pending": pending})
         except Exception as e:
             logger.warning(f"[{PLUGIN_NAME}] 保存状态失败：{e}")
+
+    def _auto_review_limits(self) -> tuple[int, int]:
+        """返回自动审查状态的（最大保留群数、单群 pending 上限）。"""
+        max_groups = int(
+            self._c("auto_review_state_max_groups", MAX_AUTO_REVIEW_STATE_GROUPS)
+        )
+        max_pending = int(
+            self._c("auto_review_pending_cap", MAX_AUTO_REVIEW_PENDING)
+        )
+        return (
+            max(10, min(2000, max_groups)),
+            max(100, min(1_000_000, max_pending)),
+        )
+
+    def _prune_auto_review_state(self) -> None:
+        """按上限裁剪自动审查状态：限制群数、pending、消息 ID 长度。"""
+        max_groups, max_pending = self._auto_review_limits()
+        cleaned: dict[str, dict[str, Any]] = {}
+        for group_id, raw in list(self._auto_review_state.items()):
+            if not isinstance(raw, dict):
+                continue
+            gid = str(group_id)[:64]
+            try:
+                pending = int(raw.get("pending") or 0)
+            except Exception:
+                pending = 0
+            try:
+                last_review = float(raw.get("last_review") or 0)
+            except Exception:
+                last_review = 0.0
+            try:
+                last_ts = int(raw.get("last_ts") or 0)
+            except Exception:
+                last_ts = 0
+            cleaned[gid] = {
+                "pending": max(0, min(max_pending, pending)),
+                "last_review": max(0.0, last_review),
+                "last_mid": str(raw.get("last_mid") or "")[:128],
+                "last_ts": max(0, last_ts),
+            }
+        if len(cleaned) > max_groups:
+            ordered = sorted(
+                cleaned.items(),
+                key=lambda kv: (
+                    float(kv[1].get("last_review") or 0),
+                    int(kv[1].get("last_ts") or 0),
+                ),
+                reverse=True,
+            )
+            cleaned = dict(ordered[:max_groups])
+        self._auto_review_state = cleaned
+
+    def _load_auto_review_state(self) -> None:
+        """从 auto_review_state.json 恢复 pending 与上次审查位置。"""
+        path = getattr(self, "auto_review_state_file", None)
+        if path is None or not path.exists():
+            return
+        try:
+            if path.stat().st_size > MAX_AUTO_REVIEW_STATE_BYTES * 2:
+                logger.warning(f"[{PLUGIN_NAME}] 自动审查状态文件过大，忽略加载")
+                return
+            data = json.loads(path.read_text("utf-8"))
+            groups = data.get("groups") if isinstance(data, dict) else {}
+            if not isinstance(groups, dict):
+                groups = {}
+            for group_id, raw in groups.items():
+                if not isinstance(raw, dict):
+                    continue
+                self._auto_review_state[str(group_id)] = {
+                    "pending": raw.get("pending", 0),
+                    "last_review": raw.get("last_review", 0),
+                    "last_mid": raw.get("last_mid", ""),
+                    "last_ts": raw.get("last_ts", 0),
+                }
+            self._prune_auto_review_state()
+            self._auto_review_dirty = False
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[{PLUGIN_NAME}] 读取自动审查状态失败：{e}")
+
+    def _save_auto_review_state(self) -> None:
+        """按上限裁剪后，紧凑写入 auto_review_state.json。"""
+        path = getattr(self, "auto_review_state_file", None)
+        if path is None:
+            return
+        try:
+            self._prune_auto_review_state()
+            payload = {
+                "version": 1,
+                "saved_at": int(time.time()),
+                "groups": self._auto_review_state,
+            }
+            text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            # 文件总大小也设上限：超限时丢弃最久未活动的群
+            while (
+                len(text.encode("utf-8")) > MAX_AUTO_REVIEW_STATE_BYTES
+                and self._auto_review_state
+            ):
+                oldest = min(
+                    self._auto_review_state.items(),
+                    key=lambda kv: (
+                        float(kv[1].get("last_review") or 0),
+                        int(kv[1].get("last_ts") or 0),
+                    ),
+                )
+                self._auto_review_state.pop(oldest[0], None)
+                payload["groups"] = self._auto_review_state
+                text = json.dumps(
+                    payload, ensure_ascii=False, separators=(",", ":")
+                )
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(text, "utf-8")
+            os.replace(tmp, path)
+            self._auto_review_dirty = False
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[{PLUGIN_NAME}] 保存自动审查状态失败：{e}")
 
     @staticmethod
     def _atomic_write(path: Path, data: Any):

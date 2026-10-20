@@ -410,7 +410,11 @@
             ],
             hint: "模式 3 只在真正执行处理（或仅留证转发）后通知" },
           { key: "auto_review_max_actions", label: "单轮最多处理条数", type: "number", min: 0, max: 10, step: 1, unit: "条",
-            hint: "0 表示只通知不自动处理" }
+            hint: "0 表示只通知不自动处理" },
+          { key: "auto_review_state_max_groups", label: "状态最多保留群数", type: "number", min: 10, max: 2000, step: 10, unit: "个",
+            hint: "持久化自动审查状态时，最多保留多少个最近活跃的群" },
+          { key: "auto_review_pending_cap", label: "单群 pending 上限", type: "number", min: 100, max: 1000000, step: 100, unit: "条",
+            hint: "每个群累计等待审查的消息条数上限，避免状态无限增长" }
         ]
       }, {
         title: "处理与限流", desc: "自动处理力度与举报频率限制",
@@ -543,7 +547,9 @@
       { value: "safe_silent", label: "安全则不通知" },
       { value: "after_action", label: "仅处理后保留证据并通知" }
     ] },
-    { key: "auto_review_max_actions", label: "单轮最多处理", type: "number", min: 0, max: 10, step: 1, unit: "条" }
+    { key: "auto_review_max_actions", label: "单轮最多处理", type: "number", min: 0, max: 10, step: 1, unit: "条" },
+    { key: "auto_review_state_max_groups", label: "状态保留群数", type: "number", min: 10, max: 2000, step: 10, unit: "个" },
+    { key: "auto_review_pending_cap", label: "pending 上限", type: "number", min: 100, max: 1000000, step: 100, unit: "条" }
   ];
 
   /* ================= 工具 ================= */

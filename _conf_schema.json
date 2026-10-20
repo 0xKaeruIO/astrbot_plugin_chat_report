@@ -221,6 +221,28 @@
                 },
                 "default": 3
             },
+            "auto_review_state_max_groups": {
+                "description": "自动审查状态最多保留群数",
+                "hint": "持久化 auto_review_state.json 时最多保留多少个最近活跃的群；超出按最近审查时间淘汰",
+                "type": "int",
+                "slider": {
+                    "min": 10,
+                    "max": 2000,
+                    "step": 10
+                },
+                "default": 200
+            },
+            "auto_review_pending_cap": {
+                "description": "单群自动审查 pending 上限",
+                "hint": "每个群累计等待审查的消息条数上限，达到后不再增加，避免状态无限增长",
+                "type": "int",
+                "slider": {
+                    "min": 100,
+                    "max": 1000000,
+                    "step": 100
+                },
+                "default": 10000
+            },
             "default_mute_duration": {
                 "description": "默认禁言时长(秒)",
                 "hint": "AI 判定违规并自动处理时的禁言时长，单位秒，例如 600 = 10 分钟",

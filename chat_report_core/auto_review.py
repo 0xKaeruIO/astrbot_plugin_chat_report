@@ -71,6 +71,9 @@ class AutoReviewMixin:
                         self._auto_review_running.discard(group_id)
                         state["pending"] = 0
                         state["last_review"] = now
+                        self._auto_review_dirty = True
+                if self._auto_review_dirty:
+                    self._save_auto_review_state()
             except asyncio.CancelledError:
                 break
             except Exception as e:  # noqa: BLE001
@@ -112,6 +115,8 @@ class AutoReviewMixin:
             self._auto_review_running.discard(group_id)
             state["pending"] = 0
             state["last_review"] = now
+            self._auto_review_dirty = True
+            self._save_auto_review_state()
 
     async def _run_auto_review(
         self,
@@ -283,6 +288,7 @@ class AutoReviewMixin:
 
         state["last_mid"] = str(items[-1].get("message_id") or "")
         state["last_ts"] = int(items[-1].get("time") or 0)
+        self._auto_review_dirty = True
 
         report_id = f"AR{int(time.time())}{uuid.uuid4().hex[:4]}"
         self._audit(

@@ -37,6 +37,8 @@ from .constants import (
     DEFAULT_WARN_TEMPLATE,
     DEFAULT_SAFE_GROUP_TEMPLATE,
     DEFAULT_GROUP_RULES,
+    MAX_AUTO_REVIEW_PENDING,
+    MAX_AUTO_REVIEW_STATE_GROUPS,
 )
 
 # 本文件位于 <插件目录>/chat_report_core/config.py；向上两级才是插件目录。
@@ -151,6 +153,12 @@ class ConfigMixin:
             ),
             "auto_review_max_actions": int(
                 self._c("auto_review_max_actions", 3)
+            ),
+            "auto_review_state_max_groups": int(
+                self._c("auto_review_state_max_groups", MAX_AUTO_REVIEW_STATE_GROUPS)
+            ),
+            "auto_review_pending_cap": int(
+                self._c("auto_review_pending_cap", MAX_AUTO_REVIEW_PENDING)
             ),
         }
         override = self._parse_overrides().get(str(group_id))

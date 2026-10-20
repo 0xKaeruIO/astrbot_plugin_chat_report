@@ -41,7 +41,7 @@ from .chat_report_core.utils import _render
     "astrbot_plugin_chat_report",
     "yosers",
     "聊天消息举报：结合上下文研判，证据先私聊转发指定管理员再撤回禁言，拿不准转人工处理，支持按群自动审查",
-    "1.0.1",
+    "1.0.2",
 )
 class ChatReportPlugin(
     ConfigMixin,
@@ -65,6 +65,7 @@ class ChatReportPlugin(
         self.data_dir = self._resolve_data_dir()
         self.reports_file = self.data_dir / "reports.json"
         self.counters_file = self.data_dir / "counters.json"
+        self.auto_review_state_file = self.data_dir / "auto_review_state.json"
         self.audit_file = self.data_dir / "audit.jsonl"
         # 处理前留存的证据（违规发言 + 上下文 + AI 结论）
         self.evidence_dir = self.data_dir / "evidence"
@@ -90,6 +91,7 @@ class ChatReportPlugin(
         # 自动审查状态：group_id -> {pending, last_review, last_mid, last_ts}
         self._auto_review_state: dict[str, dict[str, Any]] = {}
         self._auto_review_running: set[str] = set()
+        self._auto_review_dirty = False
         # 每个群最近一次事件，供定时自动审查在群安静时也能触发
         self._last_events: dict[str, Any] = {}
         self._auto_review_task: asyncio.Task | None = None
@@ -100,6 +102,7 @@ class ChatReportPlugin(
         self._expire_task: asyncio.Task | None = None
 
         self._load_state()
+        self._load_auto_review_state()
         self._register_web_apis()
 
     async def initialize(self):
@@ -115,6 +118,7 @@ class ChatReportPlugin(
         if self._auto_review_task:
             self._auto_review_task.cancel()
         self._save_state()
+        self._save_auto_review_state()
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     @filter.platform_adapter_type(filter.PlatformAdapterType.AIOCQHTTP)
