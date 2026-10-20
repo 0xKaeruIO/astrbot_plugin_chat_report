@@ -407,6 +407,7 @@ class AutoReviewMixin:
             "reporter": "自动审查",
             "message": str(item.get("text") or ""),
             "message_id": str(item.get("message_id") or ""),
+            "is_auto_review": True,
             "target_report_count": 0,
             "warn_count": self._warn_counts.get(f"{group_id}:{target_id}", 0),
             "report_id": f"AR{int(time.time())}{uuid.uuid4().hex[:4]}",
@@ -505,20 +506,11 @@ class AutoReviewMixin:
         tpl = self._c(
             "auto_review_notify_template", DEFAULT_AUTO_REVIEW_TEMPLATE
         )
-        severity_labels = {"high": "高", "medium": "中", "low": "低"}
-        markers: dict[str, str] = {}
-        for finding in findings:
-            message_id = str(finding.get("message_id") or "")
-            if not message_id:
-                continue
-            severity = severity_labels.get(
-                str(finding.get("severity") or ""), "提示"
-            )
-            reason = str(finding.get("reason") or "").strip()
-            marker = f"【违规·{severity}】"
-            if reason:
-                marker += reason[:60]
-            markers[message_id] = marker
+        markers = {
+            str(finding.get("message_id") or ""): "[违规内容]"
+            for finding in findings
+            if str(finding.get("message_id") or "")
+        }
         failed, sent, text, forward_used = await self._send_notice(
             event,
             conf,

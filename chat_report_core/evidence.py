@@ -194,8 +194,8 @@ class EvidenceMixin:
                 continue
             marker = (markers or {}).get(str(item.get("message_id") or ""))
             if marker:
-                content.insert(
-                    0, {"type": "text", "data": {"text": str(marker)[:120]}}
+                content.append(
+                    {"type": "text", "data": {"text": "\n[违规内容]"}}
                 )
             if item.get("is_target"):
                 content.insert(
@@ -262,15 +262,19 @@ class EvidenceMixin:
                 elif seg_type == "reply":
                     continue
                 elif seg_type in ("image", "record"):
-                    source = (
-                        data.get("url") or data.get("file") or data.get("path") or ""
-                    )
+                    url = str(data.get("url") or "")
+                    path = str(data.get("path") or "")
+                    file = str(data.get("file") or "")
+                    source = url or path or file
                     if source:
-                        comp = (
-                            Image(file=str(source))
-                            if seg_type == "image"
-                            else Record(file=str(source))
-                        )
+                        if seg_type == "image":
+                            comp = Image(
+                                file=file or source, url=url, path=path
+                            )
+                        else:
+                            comp = Record(
+                                file=file or source, url=url, path=path
+                            )
                         parts.append(
                             await self._media_forward_segment(comp, media_budget)
                         )
@@ -300,43 +304,89 @@ class EvidenceMixin:
                 parts.append({"type": "text", "data": {"text": text}})
         return parts
 
+    @staticmethod
+    def _media_candidates(comp: Any) -> list[str]:
+        """按 URL → 本地 path → file 顺序返回可用媒体源，避免只看裸文件名。"""
+        candidates: list[str] = []
+        for value in (
+            getattr(comp, "url", None),
+            getattr(comp, "path", None),
+            getattr(comp, "file", None),
+        ):
+            if not isinstance(value, str):
+                continue
+            value = value.strip()
+            if not value or value in candidates:
+                continue
+            if value.startswith(("http://", "https://", "base64://", "file://", "data:")):
+                candidates.append(value)
+                continue
+            try:
+                if Path(value).expanduser().exists():
+                    candidates.append(value)
+            except OSError:
+                pass
+        return candidates
+
     async def _media_forward_segment(
         self, comp: Any, media_budget: dict[str, int]
     ) -> dict[str, Any]:
-        """把一个 Image/Record 转成 base64 消息段；超限时退回 URL 或占位文本。"""
+        """把一个 Image/Record 转成 base64 消息段；超限时退回 URL/本地路径或占位。"""
         kind = "image" if isinstance(comp, Image) else "record"
         label = "[图片]" if kind == "image" else "[语音]"
         if media_budget["items"] <= 0:
             return {"type": "text", "data": {"text": label}}
         media_budget["items"] -= 1
+        candidates = self._media_candidates(comp)
         b64 = ""
-        try:
-            b64 = await asyncio.wait_for(
-                comp.convert_to_base64(), timeout=MEDIA_CONVERT_TIMEOUT
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.debug(f"[{PLUGIN_NAME}] 合并转发媒体转换失败：{e}")
+        for source in candidates:
+            try:
+                probe = Image(file=source) if kind == "image" else Record(file=source)
+                b64 = await asyncio.wait_for(
+                    probe.convert_to_base64(), timeout=MEDIA_CONVERT_TIMEOUT
+                )
+                if b64:
+                    break
+            except Exception as e:  # noqa: BLE001
+                logger.debug(
+                    f"[{PLUGIN_NAME}] 合并转发媒体转换失败（{source[:80]}）：{e}"
+                )
         if b64 and len(b64) <= min(
             media_budget["chars"], MAX_FORWARD_MEDIA_PER_IMAGE_CHARS
         ):
             media_budget["chars"] -= len(b64)
             return {"type": kind, "data": {"file": f"base64://{b64}"}}
-        source = (
-            getattr(comp, "url", None)
-            or getattr(comp, "file", None)
-            or getattr(comp, "path", None)
-        )
-        if isinstance(source, str) and source.startswith(
-            ("http://", "https://", "base64://", "file://")
-        ):
-            return {"type": kind, "data": {"file": source}}
-        if isinstance(source, str) and source:
+        # base64 超限时优先交给 AstrBot 文件服务，生成 NapCat 可访问的 URL
+        for source in candidates:
+            try:
+                probe = Image(file=source) if kind == "image" else Record(file=source)
+                result = probe.register_to_file_service()
+                if asyncio.iscoroutine(result):
+                    result = await asyncio.wait_for(
+                        result, timeout=MEDIA_CONVERT_TIMEOUT
+                    )
+                if isinstance(result, str) and result.startswith(
+                    ("http://", "https://")
+                ):
+                    return {"type": kind, "data": {"file": result}}
+            except Exception as e:  # noqa: BLE001
+                logger.debug(
+                    f"[{PLUGIN_NAME}] 媒体文件服务转换失败（{source[:80]}）：{e}"
+                )
+        for source in candidates:
+            if source.startswith(("http://", "https://", "base64://", "file://")):
+                return {"type": kind, "data": {"file": source}}
+        for source in candidates:
             try:
                 path = Path(source).expanduser()
                 if path.exists():
                     return {"type": kind, "data": {"file": str(path.resolve())}}
             except OSError:
                 pass
+        if b64:
+            logger.debug(
+                f"[{PLUGIN_NAME}] 图片/语音超过单张或总量上限，已降级为占位"
+            )
         return {"type": "text", "data": {"text": label}}
 
     async def _send_private_forward_nodes(
@@ -428,6 +478,11 @@ class EvidenceMixin:
                 title=f"举报证据-{ctx.get('report_id', '')}",
                 summary_text=_render(tpl, summary_ctx),
                 self_id=self._event_self_id(event),
+                markers=(
+                    {str(ctx.get("message_id")): "[违规内容]"}
+                    if ctx.get("is_auto_review") and ctx.get("message_id")
+                    else None
+                ),
             )
         sent: list[str] = []
         for uid in targets:
