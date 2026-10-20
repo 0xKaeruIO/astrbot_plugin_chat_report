@@ -192,17 +192,23 @@ class EvidenceMixin:
             content = await self._forward_item_content(item, media_budget)
             if not content:
                 continue
+            has_media = any(
+                str(seg.get("type")) in ("image", "record") for seg in content
+            )
             marker = (markers or {}).get(str(item.get("message_id") or ""))
-            if marker:
+            if marker and not has_media:
                 content.append(
                     {"type": "text", "data": {"text": "\n[违规内容]"}}
                 )
-            if item.get("is_target"):
+            if item.get("is_target") and not has_media:
                 content.insert(
                     0, {"type": "text", "data": {"text": "【被举报】"}}
                 )
             sender_id = str(item.get("sender_id") or "")
             name = str(item.get("sender_name") or sender_id or "群成员")
+            if item.get("is_target") and has_media:
+                # 媒体节点保持纯图片/语音，避免前置文字影响部分客户端渲染
+                name = f"【被举报】{name}"
             nodes.append(
                 {
                     "type": "node",
@@ -217,6 +223,25 @@ class EvidenceMixin:
                     },
                 }
             )
+            if marker and has_media:
+                # 标记独立成节点，图片节点只保留媒体，避免文字拼在后面导致图片不渲染
+                nodes.append(
+                    {
+                        "type": "node",
+                        "data": {
+                            "name": "审核标记",
+                            "nickname": "审核标记",
+                            "uin": default_uin,
+                            "user_id": default_user,
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "data": {"text": "[违规内容]"},
+                                }
+                            ],
+                        },
+                    }
+                )
         return nodes
 
     async def _forward_item_content(
@@ -356,7 +381,11 @@ class EvidenceMixin:
         ):
             media_budget["chars"] -= len(b64)
             return {"type": kind, "data": {"file": f"base64://{b64}"}}
-        # base64 超限时优先交给 AstrBot 文件服务，生成 NapCat 可访问的 URL
+        # base64 超限时优先用原始 URL/文件 URI，避免文件服务地址对 NapCat 不可达
+        for source in candidates:
+            if source.startswith(("http://", "https://", "base64://", "file://")):
+                return {"type": kind, "data": {"file": source}}
+        # 原始 URL 不可用时，再交给 AstrBot 文件服务生成可访问地址
         for source in candidates:
             try:
                 probe = Image(file=source) if kind == "image" else Record(file=source)
@@ -373,9 +402,6 @@ class EvidenceMixin:
                 logger.debug(
                     f"[{PLUGIN_NAME}] 媒体文件服务转换失败（{source[:80]}）：{e}"
                 )
-        for source in candidates:
-            if source.startswith(("http://", "https://", "base64://", "file://")):
-                return {"type": kind, "data": {"file": source}}
         for source in candidates:
             try:
                 path = Path(source).expanduser()
