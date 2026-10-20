@@ -314,8 +314,8 @@
                 "default": true
             },
             "forward_context_records": {
-                "description": "上下文用 QQ 合并转发送达",
-                "hint": "开启后（默认）：通知与证据会打包成 QQ「聊天记录」合并转发（1 条摘要 + 每条上下文消息各 1 条），管理员可展开查看原始对话；关闭后改为纯文本附带聊天记录",
+                "description": "通知后单独发送聊天记录存档",
+                "hint": "开启后（默认）：通知文本之后会再单独发一条 QQ「聊天记录」合并转发作为证据存档（1 条摘要 + 每条上下文消息各 1 条）；关闭后只在通知正文里附带聊天原文",
                 "type": "bool",
                 "default": true
             },
@@ -411,7 +411,7 @@
                 "description": "自动审查通知模板",
                 "hint": "自动审查结果通知（模式 1/2/3 共用），可用变量见 README",
                 "type": "text",
-                "default": "【自动审查】\n群：{group_name}({group_id})\n审查范围：{review_scope}\n发生时间：{occur_time}\n参与人员：{participants}\n违规条数：{violation_count}\nAI 结论：{context_conclusion}\n处理结果：{action_plan}\n上下文聊天记录（共 {context_count} 条）：\n{context_log}\n事情起因：{cause}"
+                "default": "【自动审查】\n群：{group_name}({group_id})\n审查范围：{review_scope}\n发生时间：{occur_time}\n参与人员：{participants}\n违规条数：{violation_count}\nAI 结论：{context_conclusion}\n举报ID：{report_id}\n处理结果：{action_plan}\n上下文聊天记录（共 {context_count} 条）：\n{context_log}\n事情起因：{cause}"
             },
             "resolved_notify_template": {
                 "description": "处理完成通知模板",

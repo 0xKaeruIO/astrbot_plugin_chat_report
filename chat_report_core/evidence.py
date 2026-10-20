@@ -267,7 +267,7 @@ class EvidenceMixin:
         targets: list[str] | None = None,
         context_items: list[dict[str, Any]] | None = None,
     ) -> list[str]:
-        """把证据私聊转发给指定管理员（优先 QQ 合并转发聊天记录），返回成功送达的 QQ 列表。"""
+        """把证据作为独立聊天记录私聊给指定管理员，返回成功送达的 QQ 列表。"""
         group_id = str(ctx.get("group_id") or "")
         if targets is None:
             targets = await self._evidence_targets(event, conf, group_id)
@@ -275,17 +275,26 @@ class EvidenceMixin:
             logger.warning(f"[{PLUGIN_NAME}] 未配置任何证据接收管理员，无法留存证据")
             return []
         tpl = self._c("evidence_template", DEFAULT_EVIDENCE_TEMPLATE)
-        _, sent, _, _ = await self._send_notice(
-            event,
-            conf,
-            ctx,
-            targets,
-            tpl,
-            title_prefix="举报证据",
-            context_items=context_items,
-            use_forward=bool(conf.get("evidence_use_forward", True)),
-            respect_notify_context=False,
-        )
+        text = _render(tpl, ctx)
+        nodes: list[dict[str, Any]] = []
+        if context_items and bool(conf.get("evidence_use_forward", True)):
+            summary_ctx = dict(ctx)
+            summary_ctx["context_log"] = "（见本条聊天记录中的上下文消息）"
+            nodes = self._build_forward_nodes(
+                context_items,
+                title=f"举报证据-{ctx.get('report_id', '')}",
+                summary_text=_render(tpl, summary_ctx),
+                self_id=self._event_self_id(event),
+            )
+        sent: list[str] = []
+        for uid in targets:
+            if nodes and await self._send_private_forward_nodes(
+                event, uid, group_id, nodes
+            ):
+                sent.append(uid)
+                continue
+            if await self._send_private(event, uid, text, group_id):
+                sent.append(uid)
         logger.info(
             f"[{PLUGIN_NAME}] 证据 {ctx.get('report_id', '')} 送达管理员：{sent}（目标：{targets}）"
         )

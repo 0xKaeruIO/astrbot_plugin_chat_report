@@ -98,18 +98,21 @@ class NotifyMixin:
         use_forward: bool = True,
         respect_notify_context: bool = True,
     ) -> tuple[list[str], list[str], str, bool]:
-        """发送通知：优先「摘要 + 聊天记录」合并转发，失败退回带上下文的纯文本。
+        """发送通知文本，并在需要时单独发送聊天记录证据。
+
+        通知和聊天记录是两条独立消息：先发带元数据/上下文/事情起因的通知文本，
+        再发一条 QQ 合并转发聊天记录作为证据存档；合并转发失败不影响通知送达。
 
         Args:
             receivers: 接收人 QQ 集合或列表。
             tpl: 通知模板。
-            title_prefix: 合并转发摘要标题前缀（举报通知/自动审查等）。
-            context_items: 上下文条目；为空时只发文本。
-            use_forward: 是否允许合并转发（证据通道可单独关闭）。
+            title_prefix: 聊天记录摘要标题前缀（举报通知/自动审查等）。
+            context_items: 上下文条目；为空时只发通知文本。
+            use_forward: 是否允许发送独立的聊天记录证据。
             respect_notify_context: 是否受 notify_include_context 开关约束。
 
         Returns:
-            (失败 QQ 列表, 成功 QQ 列表, 纯文本兜底内容, 是否至少成功合并转发一次)
+            (失败 QQ 列表, 成功 QQ 列表, 纯文本兜底内容, 是否至少成功发送一次聊天记录)
         """
         group_id = str(ctx.get("group_id") or "")
         include_ctx = True
@@ -126,7 +129,7 @@ class NotifyMixin:
             and context_items
         ):
             summary_ctx = dict(ctx)
-            summary_ctx["context_log"] = "（聊天记录已按 QQ 合并转发送达，请展开查看）"
+            summary_ctx["context_log"] = "（见本条独立聊天记录）"
             summary = self._notify_text(
                 tpl,
                 summary_ctx,
@@ -144,16 +147,18 @@ class NotifyMixin:
         failed: list[str] = []
         forward_sent = 0
         for uid in receivers:
-            if nodes and await self._send_private_forward_nodes(
-                event, uid, group_id, nodes
-            ):
-                sent.append(uid)
-                forward_sent += 1
-                continue
-            if await self._send_private(event, uid, full_text, group_id):
+            text_ok = await self._send_private(event, uid, full_text, group_id)
+            record_ok = False
+            if nodes:
+                record_ok = await self._send_private_forward_nodes(
+                    event, uid, group_id, nodes
+                )
+            if text_ok or record_ok:
                 sent.append(uid)
             else:
                 failed.append(uid)
+            if record_ok:
+                forward_sent += 1
         return failed, sent, full_text, forward_sent > 0
 
     async def _notify_safe(

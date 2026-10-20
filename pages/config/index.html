@@ -443,8 +443,8 @@
             hint: "按「群 + 被举报人」累计，供模板变量 {target_report_count} 使用" },
           { key: "notify_include_context", label: "通知中附带上下文聊天记录", type: "bool",
             hint: "转人工/安全/证据通知会自动附带发生时间、参与人员、上下文聊天记录与事情起因；模板里已含 {context_log} 时不会重复追加" },
-          { key: "forward_context_records", label: "上下文用 QQ 合并转发送达", type: "bool",
-            hint: "开启后（默认）：通知与证据打包成 QQ「聊天记录」合并转发（1 条摘要 + 每条上下文消息各 1 条），管理员可展开查看原始对话；关闭后改为纯文本附带聊天记录" },
+          { key: "forward_context_records", label: "通知后单独发聊天记录", type: "bool",
+            hint: "开启后（默认）：通知文本之后会再单独发一条 QQ「聊天记录」合并转发作为证据存档（1 条摘要 + 每条上下文消息各 1 条）；关闭后只在通知正文里附带聊天原文" },
           { key: "notify_admin_on_suspected_malicious", label: "疑似第三方恶意举报时提示管理员", type: "bool",
             hint: "举报人未参与该段对话、且上下文判定为玩笑互动时，私聊提示管理员（用「疑似恶意举报模板」），不处罚被举报人" }
         ]
@@ -500,7 +500,7 @@
             vars: ["group_name", "group_id", "occur_time", "participants", "target", "reporter", "context_conclusion", "ai_confidence", "context_count", "context_log", "report_id", "cause"],
             hint: "举报人未参与对话且属玩笑互动时，用它私聊提示管理员" },
           { key: "auto_review_notify_template", label: "自动审查通知模板", type: "textarea", rows: 12,
-            vars: ["group_name", "group_id", "review_scope", "occur_time", "participants", "violation_count", "context_conclusion", "action_plan", "context_count", "context_log", "cause"],
+            vars: ["group_name", "group_id", "review_scope", "occur_time", "participants", "violation_count", "context_conclusion", "report_id", "action_plan", "context_count", "context_log", "cause"],
             hint: "自动审查结果通知，模式 1/2/3 共用" },
           { key: "resolved_notify_template", label: "处理完成通知模板", type: "textarea", rows: 5,
             vars: ["report_id", "group_name", "group_id", "handler"] }

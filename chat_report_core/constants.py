@@ -125,6 +125,7 @@ DEFAULT_AUTO_REVIEW_TEMPLATE = (
     "参与人员：{participants}\n"
     "违规条数：{violation_count}\n"
     "AI 结论：{context_conclusion}\n"
+    "举报ID：{report_id}\n"
     "处理结果：{action_plan}\n"
     "上下文聊天记录（共 {context_count} 条）：\n"
     "{context_log}\n"
