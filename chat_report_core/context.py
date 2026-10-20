@@ -373,6 +373,39 @@ class ContextMixin:
                 window.pop(0)
         return window
 
+    async def _enrich_context_media(
+        self,
+        event: AstrMessageEvent,
+        items: list[dict[str, Any]],
+        priority_id: str = "",
+    ) -> None:
+        """给历史里缺媒体段的消息补 raw_segments，避免后续只剩 [图片] 占位。"""
+        candidates = [
+            item
+            for item in items
+            if str(item.get("message_id") or "")
+            and not item.get("components")
+            and not item.get("raw_segments")
+            and any(
+                marker in str(item.get("text") or "")
+                for marker in ("[图片]", "[语音]")
+            )
+        ]
+        if not candidates:
+            return
+        candidates.sort(
+            key=lambda item: 0
+            if str(item.get("message_id") or "") == str(priority_id)
+            else 1
+        )
+        for item in candidates[:6]:
+            detail = await self._fetch_message(
+                event, str(item.get("message_id") or "")
+            )
+            segments = detail.get("raw_segments") if detail else None
+            if segments:
+                item["raw_segments"] = segments
+
     async def _collect_context(
         self,
         event: AstrMessageEvent,
@@ -419,6 +452,7 @@ class ContextMixin:
                 for x in timeline
                 if str(x.get("message_id")) != str(exclude_message_id)
             ]
+        await self._enrich_context_media(event, timeline, message_id)
 
         target_index: int | None = None
         if message_id:

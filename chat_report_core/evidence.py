@@ -26,6 +26,7 @@ from .constants import (
     MAX_FORWARD_NODES,
     MAX_FORWARD_MEDIA_ITEMS,
     MAX_FORWARD_MEDIA_CHARS,
+    MAX_FORWARD_MEDIA_PER_IMAGE_CHARS,
     MEDIA_CONVERT_TIMEOUT,
     DEFAULT_WARN_TEMPLATE,
     DEFAULT_EVIDENCE_TEMPLATE,
@@ -147,6 +148,7 @@ class EvidenceMixin:
         title: str,
         summary_text: str,
         self_id: str = "",
+        markers: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         """构造 QQ「聊天记录」合并转发节点：1 条摘要 + 每条上下文消息 1 条。
 
@@ -160,6 +162,7 @@ class EvidenceMixin:
             title: 摘要节点标题，例如「举报证据-xxx」「自动审查-xxx」。
             summary_text: 摘要正文。
             self_id: 机器人 QQ，用作摘要节点 uin；缺失时用 0。
+            markers: 消息 ID -> 标记文本，用于在聊天记录中高亮违规消息。
         """
         default_uin: Any = int(self_id) if str(self_id).isdigit() else 0
         default_user = str(self_id or default_uin)
@@ -189,6 +192,11 @@ class EvidenceMixin:
             content = await self._forward_item_content(item, media_budget)
             if not content:
                 continue
+            marker = (markers or {}).get(str(item.get("message_id") or ""))
+            if marker:
+                content.insert(
+                    0, {"type": "text", "data": {"text": str(marker)[:120]}}
+                )
             if item.get("is_target"):
                 content.insert(
                     0, {"type": "text", "data": {"text": "【被举报】"}}
@@ -308,7 +316,9 @@ class EvidenceMixin:
             )
         except Exception as e:  # noqa: BLE001
             logger.debug(f"[{PLUGIN_NAME}] 合并转发媒体转换失败：{e}")
-        if b64 and len(b64) <= media_budget["chars"]:
+        if b64 and len(b64) <= min(
+            media_budget["chars"], MAX_FORWARD_MEDIA_PER_IMAGE_CHARS
+        ):
             media_budget["chars"] -= len(b64)
             return {"type": kind, "data": {"file": f"base64://{b64}"}}
         source = (
@@ -317,9 +327,16 @@ class EvidenceMixin:
             or getattr(comp, "path", None)
         )
         if isinstance(source, str) and source.startswith(
-            ("http://", "https://", "file://")
+            ("http://", "https://", "base64://", "file://")
         ):
             return {"type": kind, "data": {"file": source}}
+        if isinstance(source, str) and source:
+            try:
+                path = Path(source).expanduser()
+                if path.exists():
+                    return {"type": kind, "data": {"file": str(path.resolve())}}
+            except OSError:
+                pass
         return {"type": "text", "data": {"text": label}}
 
     async def _send_private_forward_nodes(

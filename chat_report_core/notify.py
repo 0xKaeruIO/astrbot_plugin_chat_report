@@ -98,6 +98,7 @@ class NotifyMixin:
         use_forward: bool = True,
         respect_notify_context: bool = True,
         attach_text: bool = True,
+        markers: dict[str, str] | None = None,
     ) -> tuple[list[str], list[str], str, bool]:
         """发送通知文本，并在需要时单独发送聊天记录证据。
 
@@ -113,6 +114,7 @@ class NotifyMixin:
             use_forward: 是否允许发送独立的聊天记录证据。
             respect_notify_context: 是否受 notify_include_context 开关约束。
             attach_text: 是否在聊天记录之外再发一条纯文本通知；False 时优先只发记录。
+            markers: 消息 ID -> 标记文本，用于在聊天记录中高亮违规消息。
 
         Returns:
             (失败 QQ 列表, 成功 QQ 列表, 纯文本兜底内容, 是否至少成功发送一次聊天记录)
@@ -145,6 +147,7 @@ class NotifyMixin:
                 title=f"{title_prefix}-{ctx.get('report_id', '')}",
                 summary_text=summary,
                 self_id=self._event_self_id(event),
+                markers=markers,
             )
         sent: list[str] = []
         failed: list[str] = []
