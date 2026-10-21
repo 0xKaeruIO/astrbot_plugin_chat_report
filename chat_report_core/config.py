@@ -91,6 +91,23 @@ class ConfigMixin:
                 logger.warning(f"[{PLUGIN_NAME}] 分群配置 JSON 解析失败：{e}")
         return {}
 
+    def _monitor_groups(self) -> set[str]:
+        """返回监控白名单群号集合；空集合表示监控所有群。"""
+        raw = self._c("monitor_group_whitelist", []) or []
+        if isinstance(raw, str):
+            raw = re.split(r"[,，\s]+", raw)
+        values = raw if isinstance(raw, (list, tuple, set)) else [raw]
+        return {
+            str(item).strip()
+            for item in values
+            if str(item).strip()
+        }
+
+    def _is_monitored_group(self, group_id: str) -> bool:
+        """判断该群是否在监控范围内；白名单为空时不过滤。"""
+        whitelist = self._monitor_groups()
+        return not whitelist or str(group_id) in whitelist
+
     def _group_conf(self, group_id: str) -> dict[str, Any]:
         """合并全局默认值与群级覆盖，返回该群最终配置。"""
         conf: dict[str, Any] = {
@@ -215,7 +232,10 @@ class ConfigMixin:
                 self._c("auto_review_pending_cap", MAX_AUTO_REVIEW_PENDING)
             ),
         }
-        override = self._parse_overrides().get(str(group_id))
+        override = None
+        if not self._monitor_groups():
+            # 白名单生效时强制使用默认配置，忽略分群覆盖
+            override = self._parse_overrides().get(str(group_id))
         if isinstance(override, dict):
             conf.update(override)
         return conf

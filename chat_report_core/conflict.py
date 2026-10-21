@@ -45,6 +45,8 @@ class ConflictMixin:
             try:
                 await asyncio.sleep(20)
                 for group_id, event in list(self._last_events.items()):
+                    if not self._is_monitored_group(group_id):
+                        continue
                     if group_id in self._conflict_running:
                         continue
                     conf = self._group_conf_cached(group_id)

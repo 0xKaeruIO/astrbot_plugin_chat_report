@@ -88,6 +88,8 @@ class AutoReviewMixin:
                 await asyncio.sleep(30)
                 now = time.time()
                 for group_id, state in list(self._auto_review_state.items()):
+                    if not self._is_monitored_group(group_id):
+                        continue
                     if group_id in self._auto_review_running:
                         continue
                     conf = self._group_conf_cached(group_id)

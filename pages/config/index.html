@@ -386,10 +386,12 @@
     },
     {
       id: "groups", label: "默认群配置", icon: "groups",
-      title: "默认群配置", desc: "对所有群生效，可被「分群覆盖」单独覆盖",
+      title: "默认群配置", desc: "白名单非空时只监控名单内群并强制使用默认配置，忽略分群覆盖",
       groups: [{
         title: "群规与通知对象", desc: "AI 研判依据、转人工时要通知的人",
         fields: [
+          { key: "monitor_group_whitelist", label: "监控群白名单", type: "list", rows: 4,
+            hint: "留空 = 监控所有群；填写后只监控这些群，并强制使用默认配置（忽略分群覆盖）。每行一个群号" },
           { key: "default_group_rules", label: "默认群规", type: "textarea", rows: 6,
             hint: "AI 研判的主要依据，可在「分群覆盖」里为单个群单独设置" },
           { key: "default_receiver_ids", label: "默认指定用户 QQ", type: "list", rows: 4,

@@ -43,7 +43,7 @@ from .chat_report_core.utils import _render
     "astrbot_plugin_chat_report",
     "yosers",
     "聊天消息举报：结合上下文研判，证据先私聊转发指定管理员再撤回禁言，拿不准转人工处理，支持按群自动审查",
-    "1.0.10",
+    "1.0.11",
 )
 class ChatReportPlugin(
     ConfigMixin,
@@ -142,6 +142,9 @@ class ChatReportPlugin(
             sender_id = str(event.get_sender_id())
             self_id = str(event.get_self_id())
         except Exception:
+            return
+
+        if not self._is_monitored_group(group_id):
             return
 
         self._cache_message(event, group_id, sender_id, self_id)

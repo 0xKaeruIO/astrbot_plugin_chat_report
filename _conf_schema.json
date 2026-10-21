@@ -162,9 +162,15 @@
         }
     },
     "groups": {
-        "description": "默认群配置（可被分群配置覆盖）",
+        "description": "默认群配置（白名单非空时强制使用，忽略分群覆盖）",
         "type": "object",
         "items": {
+            "monitor_group_whitelist": {
+                "description": "监控群白名单",
+                "hint": "留空 = 监控所有群；填写后只监控这些群，并强制使用默认配置（忽略分群覆盖）。每行一个群号",
+                "type": "list",
+                "default": []
+            },
             "default_group_rules": {
                 "description": "默认群规",
                 "hint": "AI 研判依据的默认群规，分群配置可单独覆盖",
